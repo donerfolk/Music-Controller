@@ -8,8 +8,20 @@ const { Tray, nativeImage, Menu } = require('electron');
 
 const APP_ICON = path.join(__dirname, '..', 'assets', 'appicon.png');
 
+const THEME_MENU = [
+  { id: 'color-bends', label: 'Color Bends' },
+  { id: 'simple-gradient', label: 'Simple Gradient' },
+  { id: 'album-blur', label: 'Album Blur' },
+];
+
 /** @type {Tray | null} */
 let tray = null;
+/** @type {(() => void) | null} */
+let onQuit = null;
+/** @type {() => string} */
+let getTheme = () => 'color-bends';
+/** @type {(theme: string) => void} */
+let setTheme = () => {};
 
 /**
  * @returns {Electron.NativeImage}
@@ -23,7 +35,6 @@ function loadTrayImage() {
   if (image.isEmpty()) {
     return nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'icon-paused.png'));
   }
-  // 32x32 renders app icons more clearly in the Windows notification area.
   return image.resize({ width: 32, height: 32 });
 }
 
@@ -36,17 +47,43 @@ function setTrayIconState(playing) {
   tray.setToolTip(playing ? 'Apple Music — Playing' : 'Apple Music — Paused');
 }
 
+function buildContextMenu() {
+  const active = getTheme();
+  return Menu.buildFromTemplate([
+    {
+      label: 'Themes',
+      submenu: THEME_MENU.map(({ id, label }) => ({
+        label,
+        type: 'radio',
+        checked: active === id,
+        click: () => setTheme(id),
+      })),
+    },
+    { type: 'separator' },
+    { label: 'Quit Music Controller', click: () => onQuit?.() },
+  ]);
+}
+
+function refreshTrayMenu() {
+  if (tray) tray.setContextMenu(buildContextMenu());
+}
+
 /**
  * @param {(anchor: { bounds: Electron.Rectangle, position: Electron.Point }) => void} onClick
- * @param {() => void} onQuit
+ * @param {() => void} onQuitClick
+ * @param {{ getTheme: () => string, setTheme: (theme: string) => void }} themeApi
  * @returns {Tray}
  */
-function createTray(onClick, onQuit) {
+function createTray(onClick, onQuitClick, themeApi) {
   if (tray) {
     tray.removeAllListeners();
     tray.destroy();
     tray = null;
   }
+
+  onQuit = onQuitClick;
+  getTheme = themeApi.getTheme;
+  setTheme = themeApi.setTheme;
 
   tray = new Tray(loadTrayImage());
   tray.setToolTip('Apple Music Controller');
@@ -56,12 +93,7 @@ function createTray(onClick, onQuit) {
     onClick({ bounds, position });
   });
 
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Quit Music Controller', click: onQuit },
-    ]),
-  );
-
+  refreshTrayMenu();
   return tray;
 }
 
@@ -85,4 +117,5 @@ module.exports = {
   destroyTray,
   setTrayIconState,
   getTrayBounds,
+  refreshTrayMenu,
 };

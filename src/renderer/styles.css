@@ -92,6 +92,88 @@ body {
   pointer-events: none;
 }
 
+.popover__art-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.popover__art-bg__dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 10, 14, 0.42);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.color-bends-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.album-blur {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.album-blur__pan {
+  position: absolute;
+  width: 130%;
+  height: 130%;
+  left: -15%;
+  top: -15%;
+  will-change: transform;
+}
+
+.album-blur__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: blur(20px) brightness(0.4);
+}
+
+/* Theme: simple gradient — ambient accents only (first prototype) */
+.popover__inner[data-theme="simple-gradient"] .popover__art-bg {
+  display: none;
+}
+
+.popover__inner[data-theme="simple-gradient"] .popover__ambient {
+  opacity: 1;
+}
+
+/* Theme: color bends */
+.popover__inner[data-theme="color-bends"] .album-blur {
+  display: none;
+}
+
+.popover__inner[data-theme="color-bends"] .popover__ambient {
+  opacity: 0.35;
+}
+
+/* Theme: album blur */
+.popover__inner[data-theme="album-blur"] .color-bends-container,
+.popover__inner[data-theme="album-blur"] .popover__art-bg__dim {
+  display: none;
+}
+
+.popover__inner[data-theme="album-blur"] .popover__art-bg {
+  inset: -24px;
+}
+
+.popover__inner[data-theme="album-blur"] .popover__ambient {
+  opacity: 0.35;
+}
+
 .popover__ambient {
   position: absolute;
   inset: 0;
@@ -100,7 +182,7 @@ body {
     radial-gradient(ellipse 130% 110% at 50% 45%, var(--ambient-base), transparent 65%),
     radial-gradient(ellipse 90% 80% at 0% 20%, var(--ambient-1), transparent 58%),
     radial-gradient(ellipse 90% 80% at 100% 80%, var(--ambient-2), transparent 58%);
-  opacity: 1;
+  opacity: 0.35;
   pointer-events: none;
   z-index: 0;
 }

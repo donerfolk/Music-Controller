@@ -7,6 +7,9 @@ const popoverInner = document.querySelector('.popover__inner');
 let ignoreOutsideUntil = 0;
 const albumArt = document.getElementById('album-art');
 const albumArtPlaceholder = document.getElementById('album-art-placeholder');
+const colorBendsMount = document.getElementById('color-bends');
+const albumBlurImage = document.querySelector('.album-blur__image');
+const albumBlurPan = document.querySelector('.album-blur__pan');
 const trackTitle = document.getElementById('track-title');
 const trackArtist = document.getElementById('track-artist');
 const btnPrev = document.getElementById('btn-prev');
@@ -96,9 +99,170 @@ function averageAllPixels(data) {
   };
 }
 
+const DEFAULT_PALETTE = ['#5227FF', '#a78bfa', '#7850c8'];
+
+/** @type {'color-bends' | 'simple-gradient' | 'album-blur'} */
+let currentTheme = 'color-bends';
+/** @type {string[] | null} */
+let lastPalette = null;
+/** @type {string | null} */
+let lastAlbumArtUrl = null;
+
+/** @type {ReturnType<import('./color-bends.js').createColorBends> | null} */
+let colorBends = null;
+
+const BLUR_DRIFT = { x: -5, y: 5 };
+const BLUR_HALF_MS = 10000;
+let blurRaf = 0;
+let blurStart = 0;
+
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function vibrantize({ r, g, b }, boost = 1.35) {
+  const avg = (r + g + b) / 3;
+  return {
+    r: Math.min(255, Math.round(avg + (r - avg) * boost)),
+    g: Math.min(255, Math.round(avg + (g - avg) * boost)),
+    b: Math.min(255, Math.round(avg + (b - avg) * boost)),
+  };
+}
+
+function paletteFromArt(left, center, right) {
+  return [left, center, right].map((c) => rgbToHex(vibrantize(c)));
+}
+
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
+}
+
+function albumBlurFrame(now) {
+  if (!blurStart) blurStart = now;
+  const wrap = albumBlurPan.parentElement;
+  const w = wrap?.clientWidth || 0;
+  const h = wrap?.clientHeight || 0;
+  if (!w || !h) {
+    blurRaf = requestAnimationFrame(albumBlurFrame);
+    return;
+  }
+  const period = BLUR_HALF_MS * 2;
+  const phase = ((now - blurStart) % period) / BLUR_HALF_MS;
+  const t = phase <= 1 ? phase : 2 - phase;
+  const e = easeInOut(t);
+  const x = (BLUR_DRIFT.x * 0.01) * w * e;
+  const y = (BLUR_DRIFT.y * 0.01) * h * e;
+  albumBlurPan.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  blurRaf = requestAnimationFrame(albumBlurFrame);
+}
+
+function startAlbumBlurDrift() {
+  if (currentTheme !== 'album-blur' || !albumBlurImage.getAttribute('src')) return;
+  cancelAnimationFrame(blurRaf);
+  blurStart = 0;
+  blurRaf = requestAnimationFrame(albumBlurFrame);
+}
+
+function stopAlbumBlurDrift() {
+  cancelAnimationFrame(blurRaf);
+  blurRaf = 0;
+  blurStart = 0;
+  albumBlurPan.style.transform = '';
+}
+
+async function ensureColorBends() {
+  if (colorBends) {
+    colorBends.resize();
+    return colorBends;
+  }
+  try {
+    const { createColorBends } = await import('./color-bends.js');
+    colorBends = createColorBends(colorBendsMount, {
+      rotation: 90,
+      speed: 0.2,
+      transparent: true,
+      autoRotate: 0,
+      scale: 1,
+      frequency: 1,
+      warpStrength: 1,
+      mouseInfluence: 0,
+      parallax: 0.5,
+      noise: 0.15,
+      iterations: 1,
+      intensity: 1.5,
+      bandWidth: 6,
+      colors: DEFAULT_PALETTE,
+    });
+    return colorBends;
+  } catch (err) {
+    console.error('[color-bends] init failed:', err);
+    throw err;
+  }
+}
+
+function destroyColorBends() {
+  if (!colorBends) return;
+  colorBends.destroy();
+  colorBends = null;
+}
+
+async function applyColorBendsBackground(colors) {
+  if (currentTheme !== 'color-bends') return;
+  try {
+    const cb = await ensureColorBends();
+    cb.updateColors(colors?.length ? colors : DEFAULT_PALETTE);
+    cb.resize();
+  } catch {
+    /* decorative */
+  }
+}
+
+function applyAlbumBlurBackground(dataUrl) {
+  stopAlbumBlurDrift();
+  if (currentTheme !== 'album-blur' || !dataUrl) {
+    albumBlurImage.removeAttribute('src');
+    return;
+  }
+  const onReady = () => startAlbumBlurDrift();
+  albumBlurImage.onload = onReady;
+  albumBlurImage.src = dataUrl;
+  if (albumBlurImage.complete) onReady();
+}
+
+function stopBackgroundEffects() {
+  destroyColorBends();
+  stopAlbumBlurDrift();
+}
+
+function syncBackground() {
+  if (currentTheme === 'color-bends') {
+    stopAlbumBlurDrift();
+    void applyColorBendsBackground(lastPalette);
+  } else if (currentTheme === 'album-blur') {
+    destroyColorBends();
+    applyAlbumBlurBackground(lastAlbumArtUrl);
+  } else {
+    stopBackgroundEffects();
+  }
+}
+
+/**
+ * @param {'color-bends' | 'simple-gradient' | 'album-blur'} theme
+ */
+function applyTheme(theme) {
+  const valid = ['color-bends', 'simple-gradient', 'album-blur'];
+  if (!valid.includes(theme)) return;
+  currentTheme = theme;
+  popoverInner.dataset.theme = theme;
+  syncBackground();
+}
+
 function applyAccentFromArt(dataUrl) {
+  lastAlbumArtUrl = dataUrl;
   if (!dataUrl) {
     setAccentVars(DEFAULT_ACCENT);
+    lastPalette = null;
+    syncBackground();
     return;
   }
 
@@ -123,6 +287,9 @@ function applyAccentFromArt(dataUrl) {
       ambient2: `rgba(${right.r}, ${right.g}, ${right.b}, 0.58)`,
       ambientBase: `rgba(${full.r}, ${full.g}, ${full.b}, 0.48)`,
     });
+
+    lastPalette = paletteFromArt(left, full, right);
+    syncBackground();
   };
   img.src = dataUrl;
 }
@@ -199,6 +366,7 @@ function renderVolume(vol) {
 function playOpenAnimation() {
   popoverInner.classList.remove('is-closing', 'is-hidden');
   popoverInner.classList.add('is-opening');
+  syncBackground();
   popoverInner.addEventListener(
     'animationend',
     () => popoverInner.classList.remove('is-opening'),
@@ -212,6 +380,7 @@ function playCloseAnimation() {
     const finish = () => {
       if (done) return;
       done = true;
+      stopBackgroundEffects();
       popoverInner.classList.add('is-hidden');
       popoverInner.classList.remove('is-closing');
       resolve();
@@ -323,6 +492,7 @@ volumeSlider.addEventListener('change', () => {
 
 window.musicController.onUpdate((state) => renderState(state));
 window.musicController.onVolumeUpdate((vol) => renderVolume(vol));
+window.musicController.onThemeUpdate((theme) => applyTheme(theme));
 popover.addEventListener('pointerdown', (event) => {
   if (Date.now() < ignoreOutsideUntil) return;
   if (!event.target.closest('.popover__inner')) {
@@ -339,6 +509,11 @@ window.musicController.onLayout(({ card }) => {
 
 window.musicController.onRequestOpen(async () => {
   ignoreOutsideUntil = Date.now() + 350;
+  try {
+    applyTheme(await window.musicController.getTheme());
+  } catch {
+    /* use current theme */
+  }
   playOpenAnimation();
   try {
     renderVolume(await window.musicController.getVolume());

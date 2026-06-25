@@ -7,13 +7,16 @@
     "start": "electron .",
     "stop": "powershell -NoProfile -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\"",
     "restart": "npm run stop && npm start",
-    "generate-icons": "node scripts/generate-icons.js"
+    "generate-icons": "node scripts/generate-icons.js",
+    "postinstall": "node -e \"const fs=require('fs');const d='src/renderer/vendor';fs.mkdirSync(d,{recursive:true});for(const f of['three.module.js','three.core.js'])fs.copyFileSync('node_modules/three/build/'+f,d+'/'+f);\""
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@coooookies/windows-smtc-monitor": "^1.0.12",
+    "color-thief-browser": "^2.0.2",
     "electron": "^42.5.0",
+    "three": "^0.180.0",
     "win-media-control": "^0.1.1"
   }
 }

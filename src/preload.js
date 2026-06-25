@@ -51,4 +51,12 @@ contextBridge.exposeInMainWorld('musicController', {
     ipcRenderer.on('volume:update', handler);
     return () => ipcRenderer.removeListener('volume:update', handler);
   },
+
+  getTheme: () => ipcRenderer.invoke('theme:get'),
+
+  onThemeUpdate: (callback) => {
+    const handler = (_event, theme) => callback(theme);
+    ipcRenderer.on('theme:update', handler);
+    return () => ipcRenderer.removeListener('theme:update', handler);
+  },
 });

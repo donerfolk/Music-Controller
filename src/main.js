@@ -4,7 +4,8 @@
 
 const path = require('path');
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
-const { createTray, destroyTray, setTrayIconState, getTrayBounds } = require('./tray');
+const { createTray, destroyTray, setTrayIconState, getTrayBounds, refreshTrayMenu } = require('./tray');
+const { getBackgroundTheme, setBackgroundTheme } = require('./theme');
 const { getSession, control, startSessionPolling, stopSessionPolling, refreshSession, warmControl } = require('./media');
 const { getVolumeState, setVolume, setVolumeLive, adjustVolume, setMuted, warmVolume, shutdown: shutdownVolume } = require('./volume');
 
@@ -142,6 +143,7 @@ function createPopover() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -168,6 +170,19 @@ function broadcastState(state) {
   if (popover && !popover.isDestroyed()) {
     popover.webContents.send('media:update', state);
   }
+}
+
+function broadcastTheme(theme) {
+  if (popover && !popover.isDestroyed()) {
+    popover.webContents.send('theme:update', theme);
+  }
+}
+
+function applyBackgroundTheme(theme) {
+  const next = setBackgroundTheme(theme);
+  broadcastTheme(next);
+  refreshTrayMenu();
+  return next;
 }
 
 function broadcastVolume(volumeState) {
@@ -225,6 +240,7 @@ function revealPopover() {
   popover.moveTop();
   sendPopoverLayout();
   popover.webContents.send('window:request-open');
+  popover.webContents.send('theme:update', getBackgroundTheme());
 
   setImmediate(() => {
     if (popover && !popover.isDestroyed() && popover.isVisible()) {
@@ -307,6 +323,8 @@ function setupIpc() {
     }, 60);
   });
 
+  ipcMain.handle('theme:get', () => getBackgroundTheme());
+
   ipcMain.on('window:close-complete', () => {
     finishClosePopover();
   });
@@ -323,6 +341,9 @@ if (gotSingleInstanceLock) {
     createTray(openPopover, () => {
       app.isQuitting = true;
       app.quit();
+    }, {
+      getTheme: getBackgroundTheme,
+      setTheme: applyBackgroundTheme,
     });
     setupIpc();
     startPolling();
