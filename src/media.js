@@ -69,9 +69,10 @@ function getSession() {
 
 /**
  * @param {'toggle' | 'next' | 'previous' | 'shuffle' | 'repeat'} action
+ * @param {(() => void)=} onComplete
  */
-function control(action) {
-  mediaControl.send(action);
+function control(action, onComplete) {
+  mediaControl.send(action, onComplete);
 }
 
 function warmControl() {

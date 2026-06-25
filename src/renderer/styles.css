@@ -3,8 +3,8 @@
 :root {
   --radius: 16px;
   --art-radius: 12px;
-  --bg: rgba(10, 10, 14, 0.48);
-  --bg-fallback: rgba(10, 10, 14, 0.54);
+  --bg: #0a0a0e;
+  --bg-fallback: #0a0a0e;
   --text: #fafafa;
   --text-muted: rgba(250, 250, 250, 0.5);
   --accent: #a78bfa;
@@ -23,10 +23,6 @@
   box-sizing: border-box;
 }
 
-html {
-  clip-path: inset(0 round var(--radius));
-}
-
 html,
 body {
   margin: 0;
@@ -34,20 +30,34 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-fallback);
-  border-radius: var(--radius);
+  background: transparent;
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
 
 .popover {
-  width: 100%;
-  height: 100%;
-  padding: 0;
+  position: fixed;
+  inset: 0;
+  background: transparent;
+}
+
+.popover__inner {
+  position: absolute;
+  left: var(--card-x, 0);
+  top: var(--card-y, 0);
+  width: var(--card-w, 408px);
+  height: var(--card-h, 248px);
   border-radius: var(--radius);
+  border: none;
+  background: var(--bg);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.85),
+    var(--shadow),
+    0 0 6px var(--accent-glow),
+    0 0 12px var(--ambient-1),
+    0 0 18px var(--ambient-2);
   overflow: hidden;
-  background: var(--bg-fallback);
   opacity: 1;
   transform: translateY(0);
   transition:
@@ -55,13 +65,13 @@ body {
     transform var(--anim-duration) var(--anim-ease);
 }
 
-.popover.is-hidden {
+.popover__inner.is-hidden {
   opacity: 0;
   transform: translateY(10px);
   pointer-events: none;
 }
 
-.popover.is-opening {
+.popover__inner.is-opening {
   animation: popoverIn var(--anim-duration) var(--anim-ease) forwards;
 }
 
@@ -76,22 +86,10 @@ body {
   }
 }
 
-.popover.is-closing {
+.popover__inner.is-closing {
   opacity: 0;
   transform: translateY(10px);
   pointer-events: none;
-}
-
-.popover__inner {
-  position: relative;
-  height: 100%;
-  border-radius: var(--radius);
-  border: none;
-  background: var(--bg);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(28px) saturate(1.5);
-  -webkit-backdrop-filter: blur(28px) saturate(1.5);
-  overflow: hidden;
 }
 
 .popover__ambient {
@@ -279,6 +277,10 @@ body {
 .control-btn--aux.is-active:hover:not(:disabled) {
   color: var(--accent);
   background: rgba(167, 139, 250, 0.36);
+}
+
+#btn-repeat.is-repeat-one.is-active .icon-repeat-one {
+  color: var(--accent);
 }
 
 #btn-repeat {

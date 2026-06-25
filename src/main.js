@@ -13,8 +13,11 @@ const WINDOW_HEIGHT = 248;
 const POLL_INTERVAL_MS = 1000;
 const CLOSE_TIMEOUT_MS = 400;
 const BLUR_GUARD_MS = 600;
+const PLAYBACK_BLUR_GUARD_MS = 12000;
 /** @type {BrowserWindow | null} */
 let popover = null;
+/** @type {Electron.Rectangle} */
+let cardLayout = { x: 0, y: 0, width: WINDOW_WIDTH, height: WINDOW_HEIGHT };
 /** @type {{ bounds: Electron.Rectangle, position: Electron.Point } | null} */
 let clickAnchor = null;
 /** @type {NodeJS.Timeout | null} */
@@ -88,7 +91,23 @@ function positionPopover() {
   x = Math.max(workArea.x + 8, Math.min(x, workArea.x + workArea.width - WINDOW_WIDTH - 8));
   y = Math.max(workArea.y + 8, Math.min(y, workArea.y + workArea.height - WINDOW_HEIGHT - 8));
 
-  popover.setBounds({ x, y, width: WINDOW_WIDTH, height: WINDOW_HEIGHT }, false);
+  cardLayout = { x, y, width: WINDOW_WIDTH, height: WINDOW_HEIGHT };
+  popover.setBounds(workArea, false);
+  sendPopoverLayout();
+}
+
+function sendPopoverLayout() {
+  if (!popover || popover.isDestroyed()) return;
+
+  const workArea = popover.getBounds();
+  popover.webContents.send('window:layout', {
+    card: {
+      x: cardLayout.x - workArea.x,
+      y: cardLayout.y - workArea.y,
+      width: cardLayout.width,
+      height: cardLayout.height,
+    },
+  });
 }
 
 function destroyPopover() {
@@ -204,6 +223,7 @@ function revealPopover() {
   popover.setAlwaysOnTop(true, 'pop-up-menu');
   popover.show();
   popover.moveTop();
+  sendPopoverLayout();
   popover.webContents.send('window:request-open');
 
   setImmediate(() => {
@@ -233,9 +253,30 @@ function openPopover(anchor) {
   popover.webContents.once('did-finish-load', show);
 }
 
+function extendBlurGuard(ms = BLUR_GUARD_MS) {
+  ignoreBlurUntil = Math.max(ignoreBlurUntil, Date.now() + ms);
+}
+
+function refocusPopover() {
+  if (!popover || popover.isDestroyed() || !popover.isVisible() || isClosing) return;
+  popover.setAlwaysOnTop(true, 'pop-up-menu');
+  popover.moveTop();
+  popover.focus();
+}
+
 function setupIpc() {
   ipcMain.on('media:control', (_event, action) => {
-    control(action);
+    const isPlaybackToggle = action === 'shuffle' || action === 'repeat';
+    if (isPlaybackToggle) {
+      extendBlurGuard(PLAYBACK_BLUR_GUARD_MS);
+    }
+
+    control(action, () => {
+      if (!isPlaybackToggle) return;
+      extendBlurGuard(BLUR_GUARD_MS);
+      setImmediate(() => refocusPopover());
+    });
+
     lastStateKey = '';
     refreshSession();
   });
@@ -268,6 +309,10 @@ function setupIpc() {
 
   ipcMain.on('window:close-complete', () => {
     finishClosePopover();
+  });
+
+  ipcMain.on('window:dismiss', () => {
+    requestClosePopover();
   });
 }
 

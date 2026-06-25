@@ -21,6 +21,16 @@ contextBridge.exposeInMainWorld('musicController', {
     ipcRenderer.send('window:close-complete');
   },
 
+  dismiss: () => {
+    ipcRenderer.send('window:dismiss');
+  },
+
+  onLayout: (callback) => {
+    const handler = (_event, layout) => callback(layout);
+    ipcRenderer.on('window:layout', handler);
+    return () => ipcRenderer.removeListener('window:layout', handler);
+  },
+
   /** Fire-and-forget — returns immediately for snappy controls. */
   control: (action) => ipcRenderer.send('media:control', action),
 

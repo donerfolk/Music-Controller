@@ -45,18 +45,29 @@ function write(line) {
 
 /**
  * @param {'toggle' | 'next' | 'previous' | 'shuffle' | 'repeat'} action
+ * @param {(() => void)=} onComplete
  */
-function send(action) {
+function send(action, onComplete) {
   if (action === 'shuffle' || action === 'repeat') {
     const child = spawn(
       'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PLAYBACK_SCRIPT, action],
-      { stdio: 'ignore', windowsHide: true, detached: true },
+      [
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-WindowStyle', 'Hidden',
+        '-File', PLAYBACK_SCRIPT,
+        action,
+      ],
+      { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
     );
-    child.unref();
+    child.stderr?.on('data', (data) => {
+      console.error('[apple-music-playback]', data.toString().trim());
+    });
+    child.on('close', () => onComplete?.());
     return;
   }
   write(action);
+  onComplete?.();
 }
 
 function warm() {

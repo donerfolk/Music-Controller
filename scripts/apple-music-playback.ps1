@@ -1,4 +1,4 @@
-# Apple Music shuffle/repeat — keyboard access keys (SMTC does not support these).
+# Apple Music shuffle/repeat — toggles playback bar buttons via UI Automation.
 # Usage: apple-music-playback.ps1 shuffle | repeat
 
 param(
@@ -7,36 +7,70 @@ param(
     [string]$Action
 )
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class AppleMusicWin32 {
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-}
-"@
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
 
-function Send-AppleMusicAccessKey([string]$Key) {
+function Get-PlaybackBar {
     $proc = Get-Process -Name 'AppleMusic', 'Music' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $proc -or $proc.MainWindowHandle -eq [IntPtr]::Zero) {
         [Console]::Error.WriteLine('[apple-music-playback] Apple Music not found')
         exit 1
     }
 
-    [void][AppleMusicWin32]::ShowWindow($proc.MainWindowHandle, 5)
-    [void][AppleMusicWin32]::SetForegroundWindow($proc.MainWindowHandle)
-    Start-Sleep -Milliseconds 120
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
+    $skipCond = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, 'Skip Forward')
+    $skip = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $skipCond)
+    if ($null -eq $skip) {
+        [Console]::Error.WriteLine('[apple-music-playback] Playback bar not found')
+        exit 1
+    }
 
-    # Access keys: Alt, L, then S (shuffle) or R (repeat)
-    [System.Windows.Forms.SendKeys]::SendWait('%')
-    Start-Sleep -Milliseconds 40
-    [System.Windows.Forms.SendKeys]::SendWait('l')
-    Start-Sleep -Milliseconds 40
-    [System.Windows.Forms.SendKeys]::SendWait($Key)
+    return [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($skip)
+}
+
+function Invoke-Element($element) {
+    try {
+        $toggle = $element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+        if ($null -ne $toggle) {
+            $toggle.Toggle()
+            return $true
+        }
+    } catch {}
+
+    try {
+        $invoke = $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+        if ($null -ne $invoke) {
+            $invoke.Invoke()
+            return $true
+        }
+    } catch {}
+
+    return $false
+}
+
+function Invoke-BarButton([string]$NamePattern) {
+    $bar = Get-PlaybackBar
+    $children = $bar.FindAll(
+        [System.Windows.Automation.TreeScope]::Children,
+        [System.Windows.Automation.Condition]::TrueCondition)
+
+    foreach ($child in $children) {
+        if ($child.Current.ControlType.ProgrammaticName -ne 'ControlType.Button') { continue }
+        $name = $child.Current.Name
+        if ($name -notmatch $NamePattern) { continue }
+
+        if (Invoke-Element $child) { return }
+
+        [Console]::Error.WriteLine("[apple-music-playback] Button '$name' could not be activated")
+        exit 1
+    }
+
+    [Console]::Error.WriteLine("[apple-music-playback] No button matching '$NamePattern'")
+    exit 1
 }
 
 switch ($Action) {
-    'shuffle' { Send-AppleMusicAccessKey 's' }
-    'repeat'  { Send-AppleMusicAccessKey 'r' }
+    'shuffle' { Invoke-BarButton '^Shuffle$' }
+    'repeat'  { Invoke-BarButton 'Repeat' }
 }

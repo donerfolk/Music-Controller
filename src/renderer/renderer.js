@@ -3,6 +3,8 @@
  */
 
 const popover = document.getElementById('popover');
+const popoverInner = document.querySelector('.popover__inner');
+let ignoreOutsideUntil = 0;
 const albumArt = document.getElementById('album-art');
 const albumArtPlaceholder = document.getElementById('album-art-placeholder');
 const trackTitle = document.getElementById('track-title');
@@ -195,30 +197,37 @@ function renderVolume(vol) {
 }
 
 function playOpenAnimation() {
-  popover.classList.remove('is-closing', 'is-hidden');
-  popover.classList.add('is-opening');
-  popover.addEventListener(
+  popoverInner.classList.remove('is-closing', 'is-hidden');
+  popoverInner.classList.add('is-opening');
+  popoverInner.addEventListener(
     'animationend',
-    () => popover.classList.remove('is-opening'),
+    () => popoverInner.classList.remove('is-opening'),
     { once: true },
   );
 }
 
 function playCloseAnimation() {
   return new Promise((resolve) => {
-    popover.classList.add('is-closing');
-    popover.classList.remove('is-hidden');
-
-    const onEnd = (e) => {
-      if (e.target !== popover) return;
-      popover.removeEventListener('transitionend', onEnd);
-      popover.classList.add('is-hidden');
-      popover.classList.remove('is-closing');
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      popoverInner.classList.add('is-hidden');
+      popoverInner.classList.remove('is-closing');
       resolve();
     };
 
-    popover.addEventListener('transitionend', onEnd);
-    setTimeout(resolve, 220);
+    popoverInner.classList.add('is-closing');
+    popoverInner.classList.remove('is-hidden');
+
+    const onEnd = (e) => {
+      if (e.target !== popoverInner) return;
+      popoverInner.removeEventListener('transitionend', onEnd);
+      finish();
+    };
+
+    popoverInner.addEventListener('transitionend', onEnd);
+    setTimeout(finish, 250);
   });
 }
 
@@ -314,7 +323,22 @@ volumeSlider.addEventListener('change', () => {
 
 window.musicController.onUpdate((state) => renderState(state));
 window.musicController.onVolumeUpdate((vol) => renderVolume(vol));
+popover.addEventListener('pointerdown', (event) => {
+  if (Date.now() < ignoreOutsideUntil) return;
+  if (!event.target.closest('.popover__inner')) {
+    window.musicController.dismiss();
+  }
+});
+
+window.musicController.onLayout(({ card }) => {
+  document.documentElement.style.setProperty('--card-x', `${card.x}px`);
+  document.documentElement.style.setProperty('--card-y', `${card.y}px`);
+  document.documentElement.style.setProperty('--card-w', `${card.width}px`);
+  document.documentElement.style.setProperty('--card-h', `${card.height}px`);
+});
+
 window.musicController.onRequestOpen(async () => {
+  ignoreOutsideUntil = Date.now() + 350;
   playOpenAnimation();
   try {
     renderVolume(await window.musicController.getVolume());
