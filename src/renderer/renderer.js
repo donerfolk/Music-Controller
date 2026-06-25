@@ -1,0 +1,291 @@
+/**
+ * Renderer — track display, controls, animations, album-art accent color.
+ */
+
+const popover = document.getElementById('popover');
+const albumArt = document.getElementById('album-art');
+const albumArtPlaceholder = document.getElementById('album-art-placeholder');
+const trackTitle = document.getElementById('track-title');
+const trackArtist = document.getElementById('track-artist');
+const btnPrev = document.getElementById('btn-prev');
+const btnPlay = document.getElementById('btn-play');
+const btnNext = document.getElementById('btn-next');
+const btnVolDown = document.getElementById('btn-vol-down');
+const btnVolUp = document.getElementById('btn-vol-up');
+const btnMute = document.getElementById('btn-mute');
+const volumeSlider = document.getElementById('volume-slider');
+
+/** @type {import('../types').MediaState | null} */
+let currentState = null;
+let volumeDragging = false;
+let volumeSyncPending = false;
+let lastVolumeSent = -1;
+const accentCanvas = document.createElement('canvas');
+
+const DEFAULT_ACCENT = {
+  accent: '#a78bfa',
+  glow: 'rgba(167, 139, 250, 0.55)',
+  ambient1: 'rgba(167, 139, 250, 0.62)',
+  ambient2: 'rgba(120, 100, 200, 0.58)',
+  ambientBase: 'rgba(167, 139, 250, 0.48)',
+};
+
+function setAccentVars({ accent, glow, ambient1, ambient2, ambientBase }) {
+  document.documentElement.style.setProperty('--accent', accent);
+  document.documentElement.style.setProperty('--accent-glow', glow);
+  document.documentElement.style.setProperty('--ambient-1', ambient1);
+  document.documentElement.style.setProperty('--ambient-2', ambient2);
+  if (ambientBase) {
+    document.documentElement.style.setProperty('--ambient-base', ambientBase);
+  }
+}
+
+/**
+ * @param {Uint8ClampedArray} data
+ * @param {number} size
+ * @param {number} x0
+ * @param {number} y0
+ * @param {number} x1
+ * @param {number} y1
+ */
+function averageRegion(data, size, x0, y0, x1, y1) {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = (y * size + x) * 4;
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      count++;
+    }
+  }
+
+  return {
+    r: Math.round(r / count),
+    g: Math.round(g / count),
+    b: Math.round(b / count),
+  };
+}
+
+function averageAllPixels(data) {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  const count = data.length / 4;
+
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+  }
+
+  return {
+    r: Math.round(r / count),
+    g: Math.round(g / count),
+    b: Math.round(b / count),
+  };
+}
+
+function applyAccentFromArt(dataUrl) {
+  if (!dataUrl) {
+    setAccentVars(DEFAULT_ACCENT);
+    return;
+  }
+
+  const img = new Image();
+  img.onload = () => {
+    const size = 16;
+    accentCanvas.width = size;
+    accentCanvas.height = size;
+    const ctx = accentCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    ctx.drawImage(img, 0, 0, size, size);
+    const { data } = ctx.getImageData(0, 0, size, size);
+    const full = averageAllPixels(data);
+    const left = averageRegion(data, size, 0, 0, 7, 15);
+    const right = averageRegion(data, size, 8, 0, 15, 15);
+
+    setAccentVars({
+      accent: `rgb(${full.r}, ${full.g}, ${full.b})`,
+      glow: `rgba(${full.r}, ${full.g}, ${full.b}, 0.55)`,
+      ambient1: `rgba(${left.r}, ${left.g}, ${left.b}, 0.62)`,
+      ambient2: `rgba(${right.r}, ${right.g}, ${right.b}, 0.58)`,
+      ambientBase: `rgba(${full.r}, ${full.g}, ${full.b}, 0.48)`,
+    });
+  };
+  img.src = dataUrl;
+}
+
+function updatePlayButton(isPlaying) {
+  btnPlay.classList.toggle('is-playing', isPlaying);
+  btnPlay.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+}
+
+/**
+ * @param {import('../types').MediaState} state
+ */
+function renderState(state) {
+  currentState = state;
+
+  trackTitle.textContent = state.title || 'Not playing';
+  trackArtist.textContent = state.artist || (state.active ? '' : 'Open Apple Music to begin');
+
+  if (state.albumArt) {
+    albumArt.src = state.albumArt;
+    albumArt.hidden = false;
+    albumArtPlaceholder.hidden = true;
+    applyAccentFromArt(state.albumArt);
+  } else {
+    albumArt.removeAttribute('src');
+    albumArt.hidden = true;
+    albumArtPlaceholder.hidden = false;
+    applyAccentFromArt(null);
+  }
+
+  updatePlayButton(state.isPlaying);
+
+  const disabled = !state.active;
+  btnPrev.disabled = disabled;
+  btnPlay.disabled = disabled;
+  btnNext.disabled = disabled;
+}
+
+/**
+ * @param {{ volume: number, muted: boolean }} vol
+ */
+function renderVolume(vol) {
+  if (!volumeDragging) {
+    volumeSlider.value = String(vol.muted ? 0 : vol.volume);
+  }
+  btnMute.classList.toggle('is-muted', vol.muted);
+  btnMute.setAttribute('aria-label', vol.muted ? 'Unmute' : 'Mute');
+}
+
+function playOpenAnimation() {
+  popover.classList.remove('is-closing', 'is-hidden');
+  popover.classList.add('is-opening');
+  popover.addEventListener(
+    'animationend',
+    () => popover.classList.remove('is-opening'),
+    { once: true },
+  );
+}
+
+function playCloseAnimation() {
+  return new Promise((resolve) => {
+    popover.classList.add('is-closing');
+    popover.classList.remove('is-hidden');
+
+    const onEnd = (e) => {
+      if (e.target !== popover) return;
+      popover.removeEventListener('transitionend', onEnd);
+      popover.classList.add('is-hidden');
+      popover.classList.remove('is-closing');
+      resolve();
+    };
+
+    popover.addEventListener('transitionend', onEnd);
+    setTimeout(resolve, 220);
+  });
+}
+
+function handleControl(action) {
+  if (!currentState?.active) return;
+
+  if (action === 'toggle') {
+    updatePlayButton(!currentState.isPlaying);
+  }
+
+  window.musicController.control(action);
+}
+
+btnPrev.addEventListener('click', () => handleControl('previous'));
+btnPlay.addEventListener('click', () => handleControl('toggle'));
+btnNext.addEventListener('click', () => handleControl('next'));
+
+btnVolDown.addEventListener('click', () => {
+  const next = Math.max(0, Number(volumeSlider.value) - 5);
+  volumeSlider.value = String(next);
+  lastVolumeSent = next;
+  btnMute.classList.toggle('is-muted', next === 0);
+  window.musicController.adjustVolume(-5);
+});
+
+btnVolUp.addEventListener('click', () => {
+  const next = Math.min(100, Number(volumeSlider.value) + 5);
+  volumeSlider.value = String(next);
+  lastVolumeSent = next;
+  btnMute.classList.toggle('is-muted', next === 0);
+  window.musicController.adjustVolume(5);
+});
+
+btnMute.addEventListener('click', () => {
+  const isMuted = btnMute.classList.contains('is-muted');
+  btnMute.classList.toggle('is-muted', !isMuted);
+  window.musicController.setMuted(!isMuted);
+});
+
+async function syncVolumeFromSlider() {
+  if (volumeSyncPending) return;
+  volumeSyncPending = true;
+  const value = Number(volumeSlider.value);
+  lastVolumeSent = -1;
+  try {
+    renderVolume(await window.musicController.setVolume(value));
+  } catch {
+    /* ignore */
+  } finally {
+    volumeSyncPending = false;
+  }
+}
+
+volumeSlider.addEventListener('pointerdown', (event) => {
+  volumeDragging = true;
+  volumeSlider.setPointerCapture(event.pointerId);
+});
+
+volumeSlider.addEventListener('input', () => {
+  const value = Number(volumeSlider.value);
+  btnMute.classList.toggle('is-muted', value === 0);
+  if (value === lastVolumeSent) return;
+  lastVolumeSent = value;
+  window.musicController.setVolumeLive(value);
+});
+
+function endVolumeDrag(event) {
+  if (!volumeDragging) return;
+  if (volumeSlider.hasPointerCapture(event.pointerId)) {
+    volumeSlider.releasePointerCapture(event.pointerId);
+  }
+  void syncVolumeFromSlider().finally(() => {
+    volumeDragging = false;
+  });
+}
+
+volumeSlider.addEventListener('pointerup', endVolumeDrag);
+volumeSlider.addEventListener('pointercancel', endVolumeDrag);
+
+volumeSlider.addEventListener('change', () => {
+  if (volumeDragging || volumeSyncPending) return;
+  void syncVolumeFromSlider();
+});
+
+window.musicController.onUpdate((state) => renderState(state));
+window.musicController.onVolumeUpdate((vol) => renderVolume(vol));
+window.musicController.onRequestOpen(async () => {
+  playOpenAnimation();
+  try {
+    renderVolume(await window.musicController.getVolume());
+  } catch {
+    /* volume unavailable */
+  }
+});
+window.musicController.onRequestClose(async () => {
+  await playCloseAnimation();
+  window.musicController.notifyCloseComplete();
+});

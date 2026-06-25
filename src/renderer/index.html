@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'"
+    />
+    <title>Music Controller</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="popover" class="popover">
+      <div class="popover__inner">
+        <div class="popover__ambient" aria-hidden="true"></div>
+        <div class="popover__content">
+          <div class="track">
+            <div class="track__art-wrap">
+              <img id="album-art" class="track__art" alt="" />
+              <div id="album-art-placeholder" class="track__art track__art--placeholder" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <circle cx="12" cy="12" r="9" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </div>
+            </div>
+            <div class="track__meta">
+              <p id="track-title" class="track__title">Not playing</p>
+              <p id="track-artist" class="track__artist"></p>
+            </div>
+          </div>
+
+          <div class="controls" role="toolbar" aria-label="Playback controls">
+            <button class="control-btn" id="btn-prev" type="button" aria-label="Previous track">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 5h2v14H5z" fill="currentColor" />
+                <path d="M19 5L11 12l8 7V5z" fill="currentColor" />
+                <path d="M13 5L5 12l8 7V5z" fill="currentColor" />
+              </svg>
+            </button>
+            <button class="control-btn control-btn--primary" id="btn-play" type="button" aria-label="Play">
+              <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 5v14l11-7z" fill="currentColor" />
+              </svg>
+              <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" />
+                <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" />
+              </svg>
+            </button>
+            <button class="control-btn" id="btn-next" type="button" aria-label="Next track">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 5l8 7-8 7V5z" fill="currentColor" />
+                <path d="M11 5l8 7-8 7V5z" fill="currentColor" />
+                <path d="M17 5h2v14h-2z" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="volume" role="group" aria-label="Volume">
+            <button class="control-btn control-btn--small" id="btn-vol-down" type="button" aria-label="Volume down">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 9v6h4l5 4V5L9 9H5z" fill="currentColor" />
+              </svg>
+            </button>
+            <input
+              id="volume-slider"
+              class="volume__slider"
+              type="range"
+              min="0"
+              max="100"
+              value="50"
+              aria-label="Volume level"
+            />
+            <button class="control-btn control-btn--small" id="btn-vol-up" type="button" aria-label="Volume up">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 9v6h4l5 4V5L9 9H5zM16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" fill="currentColor" />
+              </svg>
+            </button>
+            <button class="control-btn control-btn--small" id="btn-mute" type="button" aria-label="Mute">
+              <svg class="icon-vol-on" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 9v6h4l5 4V5L9 9H5zm12.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" fill="currentColor" />
+              </svg>
+              <svg class="icon-vol-off" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 9v6h4l5 4V5L9 9H5zm10.5 2.5l2.5 2.5-2.5 2.5-1.41-1.41L14.59 12l-1.91-1.91 1.41-1.41zm-3 0l2.5 2.5-2.5 2.5-1.41-1.41L11.59 12l-1.91-1.91 1.41-1.41z" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

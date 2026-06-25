@@ -1,0 +1,44 @@
+/**
+ * Preload script — exposes a safe IPC bridge to the renderer.
+ */
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('musicController', {
+  onUpdate: (callback) => {
+    const handler = (_event, state) => callback(state);
+    ipcRenderer.on('media:update', handler);
+    return () => ipcRenderer.removeListener('media:update', handler);
+  },
+
+  onRequestClose: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('window:request-close', handler);
+    return () => ipcRenderer.removeListener('window:request-close', handler);
+  },
+
+  notifyCloseComplete: () => {
+    ipcRenderer.send('window:close-complete');
+  },
+
+  /** Fire-and-forget — returns immediately for snappy controls. */
+  control: (action) => ipcRenderer.send('media:control', action),
+
+  onRequestOpen: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('window:request-open', handler);
+    return () => ipcRenderer.removeListener('window:request-open', handler);
+  },
+
+  getVolume: () => ipcRenderer.invoke('volume:get'),
+  setVolumeLive: (volume) => ipcRenderer.send('volume:set-live', volume),
+  setVolume: (volume) => ipcRenderer.invoke('volume:set', volume),
+  adjustVolume: (delta) => ipcRenderer.send('volume:adjust', delta),
+  setMuted: (muted) => ipcRenderer.send('volume:mute', muted),
+
+  onVolumeUpdate: (callback) => {
+    const handler = (_event, state) => callback(state);
+    ipcRenderer.on('volume:update', handler);
+    return () => ipcRenderer.removeListener('volume:update', handler);
+  },
+});

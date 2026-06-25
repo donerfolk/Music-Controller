@@ -1,0 +1,19 @@
+{
+  "name": "music-controller",
+  "version": "1.0.0",
+  "description": "Apple Music tray controller for Windows via SMTC",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "stop": "powershell -NoProfile -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\"",
+    "restart": "npm run stop && npm start",
+    "generate-icons": "node scripts/generate-icons.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@coooookies/windows-smtc-monitor": "^1.0.12",
+    "electron": "^42.5.0",
+    "win-media-control": "^0.1.1"
+  }
+}
