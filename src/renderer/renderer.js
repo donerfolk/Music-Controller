@@ -10,6 +10,8 @@ const trackArtist = document.getElementById('track-artist');
 const btnPrev = document.getElementById('btn-prev');
 const btnPlay = document.getElementById('btn-play');
 const btnNext = document.getElementById('btn-next');
+const btnShuffle = document.getElementById('btn-shuffle');
+const btnRepeat = document.getElementById('btn-repeat');
 const btnVolDown = document.getElementById('btn-vol-down');
 const btnVolUp = document.getElementById('btn-vol-up');
 const btnMute = document.getElementById('btn-mute');
@@ -17,6 +19,8 @@ const volumeSlider = document.getElementById('volume-slider');
 
 /** @type {import('../types').MediaState | null} */
 let currentState = null;
+let localShuffle = false;
+let localRepeat = 'off';
 let volumeDragging = false;
 let volumeSyncPending = false;
 let lastVolumeSent = -1;
@@ -126,11 +130,32 @@ function updatePlayButton(isPlaying) {
   btnPlay.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
 }
 
+function renderPlaybackToggles() {
+  btnShuffle.classList.toggle('is-active', localShuffle);
+  btnShuffle.setAttribute('aria-label', localShuffle ? 'Shuffle on' : 'Shuffle off');
+  btnShuffle.setAttribute('aria-pressed', String(localShuffle));
+
+  btnRepeat.classList.toggle('is-active', localRepeat !== 'off');
+  btnRepeat.classList.toggle('is-repeat-one', localRepeat === 'one');
+  const repeatLabel = localRepeat === 'one'
+    ? 'Repeat one'
+    : localRepeat === 'all'
+      ? 'Repeat all'
+      : 'Repeat off';
+  btnRepeat.setAttribute('aria-label', repeatLabel);
+  btnRepeat.setAttribute('aria-pressed', String(localRepeat !== 'off'));
+}
+
 /**
  * @param {import('../types').MediaState} state
  */
 function renderState(state) {
   currentState = state;
+
+  if (!state.active) {
+    localShuffle = false;
+    localRepeat = 'off';
+  }
 
   trackTitle.textContent = state.title || 'Not playing';
   trackArtist.textContent = state.artist || (state.active ? '' : 'Open Apple Music to begin');
@@ -148,11 +173,14 @@ function renderState(state) {
   }
 
   updatePlayButton(state.isPlaying);
+  renderPlaybackToggles();
 
   const disabled = !state.active;
   btnPrev.disabled = disabled;
   btnPlay.disabled = disabled;
   btnNext.disabled = disabled;
+  btnShuffle.disabled = disabled;
+  btnRepeat.disabled = disabled;
 }
 
 /**
@@ -199,6 +227,13 @@ function handleControl(action) {
 
   if (action === 'toggle') {
     updatePlayButton(!currentState.isPlaying);
+  } else if (action === 'shuffle') {
+    localShuffle = !localShuffle;
+    renderPlaybackToggles();
+  } else if (action === 'repeat') {
+    const cycle = { off: 'all', all: 'one', one: 'off' };
+    localRepeat = cycle[localRepeat] || 'off';
+    renderPlaybackToggles();
   }
 
   window.musicController.control(action);
@@ -207,6 +242,8 @@ function handleControl(action) {
 btnPrev.addEventListener('click', () => handleControl('previous'));
 btnPlay.addEventListener('click', () => handleControl('toggle'));
 btnNext.addEventListener('click', () => handleControl('next'));
+btnShuffle.addEventListener('click', () => handleControl('shuffle'));
+btnRepeat.addEventListener('click', () => handleControl('repeat'));
 
 btnVolDown.addEventListener('click', () => {
   const next = Math.max(0, Number(volumeSlider.value) - 5);

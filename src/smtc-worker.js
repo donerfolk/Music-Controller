@@ -39,6 +39,8 @@ function normalizeSession(session) {
       album: '',
       albumArt: null,
       isPlaying: false,
+      shuffleActive: false,
+      repeatMode: 'off',
       sourceAppId: null,
     };
   }
@@ -51,6 +53,8 @@ function normalizeSession(session) {
     album: session.media?.albumTitle || '',
     albumArt: thumbnailToDataUrl(session.media?.thumbnail),
     isPlaying: status === PlaybackStatus.Playing,
+    shuffleActive: false,
+    repeatMode: 'off',
     sourceAppId: session.sourceAppId ?? null,
   };
 }

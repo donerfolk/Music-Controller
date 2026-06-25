@@ -32,6 +32,11 @@
           </div>
 
           <div class="controls" role="toolbar" aria-label="Playback controls">
+            <button class="control-btn control-btn--aux" id="btn-shuffle" type="button" aria-label="Shuffle off" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" fill="currentColor" />
+              </svg>
+            </button>
             <button class="control-btn" id="btn-prev" type="button" aria-label="Previous track">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M5 5h2v14H5z" fill="currentColor" />
@@ -54,6 +59,12 @@
                 <path d="M11 5l8 7-8 7V5z" fill="currentColor" />
                 <path d="M17 5h2v14h-2z" fill="currentColor" />
               </svg>
+            </button>
+            <button class="control-btn control-btn--aux" id="btn-repeat" type="button" aria-label="Repeat off" aria-pressed="false">
+              <svg class="icon-repeat" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 7h8.5l-2.5-2.5L14 3l5 5-5 5-1-1.5L15.5 9H7V7zm10 10H8.5l2.5 2.5L10 21l-5-5 5-5 1 1.5L8.5 15H17v2z" fill="currentColor" />
+              </svg>
+              <span class="icon-repeat-one" aria-hidden="true">1</span>
             </button>
           </div>
 
@@ -82,7 +93,8 @@
                 <path d="M5 9v6h4l5 4V5L9 9H5zm12.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" fill="currentColor" />
               </svg>
               <svg class="icon-vol-off" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M5 9v6h4l5 4V5L9 9H5zm10.5 2.5l2.5 2.5-2.5 2.5-1.41-1.41L14.59 12l-1.91-1.91 1.41-1.41zm-3 0l2.5 2.5-2.5 2.5-1.41-1.41L11.59 12l-1.91-1.91 1.41-1.41z" fill="currentColor" />
+                <path d="M5 9v6h4l5 4V5L9 9H5z" fill="currentColor" />
+                <line x1="3" y1="3" x2="21" y2="21" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" />
               </svg>
             </button>
           </div>

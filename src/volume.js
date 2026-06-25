@@ -14,6 +14,8 @@ let daemon = null;
 let stdoutReader = null;
 /** @type {((state: { volume: number, muted: boolean, available?: boolean }) => void) | null} */
 let pendingGetResolve = null;
+/** @type {Promise<{ volume: number, muted: boolean, available?: boolean }> | null} */
+let volumeGetInFlight = null;
 
 function startDaemon() {
   if (daemon) return;
@@ -49,6 +51,7 @@ function startDaemon() {
     daemon = null;
     stdoutReader = null;
     pendingGetResolve = null;
+    volumeGetInFlight = null;
   });
 
   daemon.on('error', (err) => {
@@ -56,6 +59,7 @@ function startDaemon() {
     daemon = null;
     stdoutReader = null;
     pendingGetResolve = null;
+    volumeGetInFlight = null;
   });
 }
 
@@ -99,17 +103,25 @@ function setMuted(muted) {
 }
 
 function getVolumeState() {
+  if (volumeGetInFlight) return volumeGetInFlight;
+
   startDaemon();
-  return new Promise((resolve) => {
-    pendingGetResolve = resolve;
+  volumeGetInFlight = new Promise((resolve) => {
+    pendingGetResolve = (state) => {
+      pendingGetResolve = null;
+      volumeGetInFlight = null;
+      resolve(state);
+    };
     write('get');
     setTimeout(() => {
-      if (pendingGetResolve === resolve) {
-        pendingGetResolve = null;
-        resolve({ volume: 0, muted: false, available: false });
-      }
+      if (!pendingGetResolve) return;
+      pendingGetResolve = null;
+      volumeGetInFlight = null;
+      resolve({ volume: 0, muted: false, available: false });
     }, 3000);
   });
+
+  return volumeGetInFlight;
 }
 
 async function setVolume(volume) {
@@ -129,6 +141,7 @@ function shutdown() {
     daemon = null;
     stdoutReader = null;
     pendingGetResolve = null;
+    volumeGetInFlight = null;
   }
 }
 

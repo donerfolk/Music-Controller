@@ -214,7 +214,6 @@ function revealPopover() {
 
   lastStateKey = '';
   broadcastState(getSession());
-  pushVolumeState();
 }
 
 /**

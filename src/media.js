@@ -18,6 +18,8 @@ const IDLE_STATE = {
   album: '',
   albumArt: null,
   isPlaying: false,
+  shuffleActive: false,
+  repeatMode: 'off',
   sourceAppId: null,
 };
 
@@ -66,7 +68,7 @@ function getSession() {
 }
 
 /**
- * @param {'toggle' | 'next' | 'previous'} action
+ * @param {'toggle' | 'next' | 'previous' | 'shuffle' | 'repeat'} action
  */
 function control(action) {
   mediaControl.send(action);

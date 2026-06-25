@@ -6,6 +6,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const DAEMON_SCRIPT = path.join(__dirname, '..', 'scripts', 'media-daemon.ps1');
+const PLAYBACK_SCRIPT = path.join(__dirname, '..', 'scripts', 'apple-music-playback.ps1');
 
 /** @type {import('child_process').ChildProcess | null} */
 let daemon = null;
@@ -33,16 +34,29 @@ function startDaemon() {
   });
 }
 
-/**
- * @param {'toggle' | 'next' | 'previous'} action
- */
-function send(action) {
+function write(line) {
   startDaemon();
   if (!daemon?.stdin?.writable) {
     console.error('[media-daemon] stdin not ready');
     return;
   }
-  daemon.stdin.write(`${action}\n`);
+  daemon.stdin.write(`${line}\n`);
+}
+
+/**
+ * @param {'toggle' | 'next' | 'previous' | 'shuffle' | 'repeat'} action
+ */
+function send(action) {
+  if (action === 'shuffle' || action === 'repeat') {
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PLAYBACK_SCRIPT, action],
+      { stdio: 'ignore', windowsHide: true, detached: true },
+    );
+    child.unref();
+    return;
+  }
+  write(action);
 }
 
 function warm() {

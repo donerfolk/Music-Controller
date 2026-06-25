@@ -23,8 +23,12 @@ Function AwaitBool($WinRtAction) {
 
 [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media, ContentType = WindowsRuntime] | Out-Null
 
+$script:CachedManager = $null
+
 function Get-Manager {
-    AwaitAction([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync())
+    if ($null -ne $script:CachedManager) { return $script:CachedManager }
+    $script:CachedManager = AwaitAction([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync())
+    return $script:CachedManager
 }
 
 function Get-TargetSession($manager) {
