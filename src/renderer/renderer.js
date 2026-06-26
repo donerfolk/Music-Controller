@@ -1,32 +1,52 @@
 /**
- * Renderer — track display, controls, animations, album-art accent color.
+ * Renderer — track display, controls, album-art accent color.
  */
 
-const popover = document.getElementById('popover');
-const popoverInner = document.querySelector('.popover__inner');
+/** @type {import('react').RefObject<import('./popover-shell.jsx').PopoverController> | null} */
+let animationControllerRef = null;
 let ignoreOutsideUntil = 0;
-const albumArt = document.getElementById('album-art');
-const albumArtPlaceholder = document.getElementById('album-art-placeholder');
-const colorBendsMount = document.getElementById('color-bends');
-const floatingLinesMount = document.getElementById('floating-lines');
-const albumBlurImage = document.querySelector('.album-blur__image');
-const albumBlurPan = document.querySelector('.album-blur__pan');
-const trackTitle = document.getElementById('track-title');
-const trackArtist = document.getElementById('track-artist');
-const btnPrev = document.getElementById('btn-prev');
-const btnPlay = document.getElementById('btn-play');
-const btnNext = document.getElementById('btn-next');
-const btnShuffle = document.getElementById('btn-shuffle');
-const btnRepeat = document.getElementById('btn-repeat');
-const btnVolDown = document.getElementById('btn-vol-down');
-const btnVolUp = document.getElementById('btn-vol-up');
-const btnMute = document.getElementById('btn-mute');
-const volumeSlider = document.getElementById('volume-slider');
+
+function getPopoverInner() {
+  return document.querySelector('.popover__inner');
+}
+
+/** @type {HTMLImageElement | null} */
+let albumArt = null;
+/** @type {HTMLElement | null} */
+let albumArtPlaceholder = null;
+/** @type {HTMLElement | null} */
+let colorBendsMount = null;
+/** @type {HTMLElement | null} */
+let floatingLinesMount = null;
+/** @type {HTMLImageElement | null} */
+let albumBlurImage = null;
+/** @type {HTMLElement | null} */
+let albumBlurPan = null;
+/** @type {HTMLElement | null} */
+let trackTitle = null;
+/** @type {HTMLElement | null} */
+let trackArtist = null;
+/** @type {HTMLButtonElement | null} */
+let btnPrev = null;
+/** @type {HTMLButtonElement | null} */
+let btnPlay = null;
+/** @type {HTMLButtonElement | null} */
+let btnNext = null;
+/** @type {HTMLButtonElement | null} */
+let btnShuffle = null;
+/** @type {HTMLButtonElement | null} */
+let btnRepeat = null;
+/** @type {HTMLButtonElement | null} */
+let btnVolDown = null;
+/** @type {HTMLButtonElement | null} */
+let btnVolUp = null;
+/** @type {HTMLButtonElement | null} */
+let btnMute = null;
+/** @type {HTMLInputElement | null} */
+let volumeSlider = null;
 
 /** @type {import('../types').MediaState | null} */
 let currentState = null;
-let localShuffle = false;
-let localRepeat = 'off';
 let volumeDragging = false;
 let volumeSyncPending = false;
 let lastVolumeSent = -1;
@@ -450,13 +470,15 @@ function syncBackground() {
 
 /**
  * @param {'color-bends' | 'simple-gradient' | 'album-blur' | 'floating-lines'} theme
+ * @param {{ sync?: boolean }} [opts]
  */
-function applyTheme(theme) {
+function applyTheme(theme, { sync = true } = {}) {
   const valid = ['color-bends', 'simple-gradient', 'album-blur', 'floating-lines'];
   if (!valid.includes(theme)) return;
   currentTheme = theme;
-  popoverInner.dataset.theme = theme;
-  syncBackground();
+  const popoverInner = getPopoverInner();
+  if (popoverInner) popoverInner.dataset.theme = theme;
+  if (sync) syncBackground();
 }
 
 function clearAlbumColors() {
@@ -471,24 +493,29 @@ function clearAlbumColors() {
 }
 
 function updatePlayButton(isPlaying) {
+  if (!btnPlay) return;
   btnPlay.classList.toggle('is-playing', isPlaying);
   btnPlay.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
 }
 
 function renderPlaybackToggles() {
-  btnShuffle.classList.toggle('is-active', localShuffle);
-  btnShuffle.setAttribute('aria-label', localShuffle ? 'Shuffle on' : 'Shuffle off');
-  btnShuffle.setAttribute('aria-pressed', String(localShuffle));
+  if (!btnShuffle || !btnRepeat) return;
+  const shuffle = currentState?.shuffleActive ?? false;
+  const repeat = currentState?.repeatMode ?? 'off';
 
-  btnRepeat.classList.toggle('is-active', localRepeat !== 'off');
-  btnRepeat.classList.toggle('is-repeat-one', localRepeat === 'one');
-  const repeatLabel = localRepeat === 'one'
+  btnShuffle.classList.toggle('is-active', shuffle);
+  btnShuffle.setAttribute('aria-label', shuffle ? 'Shuffle on' : 'Shuffle off');
+  btnShuffle.setAttribute('aria-pressed', String(shuffle));
+
+  btnRepeat.classList.toggle('is-active', repeat !== 'off');
+  btnRepeat.classList.toggle('is-repeat-one', repeat === 'one');
+  const repeatLabel = repeat === 'one'
     ? 'Repeat one'
-    : localRepeat === 'all'
+    : repeat === 'all'
       ? 'Repeat all'
       : 'Repeat off';
   btnRepeat.setAttribute('aria-label', repeatLabel);
-  btnRepeat.setAttribute('aria-pressed', String(localRepeat !== 'off'));
+  btnRepeat.setAttribute('aria-pressed', String(repeat !== 'off'));
 }
 
 /**
@@ -496,14 +523,14 @@ function renderPlaybackToggles() {
  */
 function renderState(state) {
   currentState = state;
+  bindDomRefs();
 
-  if (!state.active) {
-    localShuffle = false;
-    localRepeat = 'off';
-  }
+  if (!trackTitle || !trackArtist || !albumArt || !albumArtPlaceholder) return;
 
   trackTitle.textContent = state.title || 'Not playing';
-  trackArtist.textContent = state.artist || (state.active ? '' : 'Open Apple Music to begin');
+  trackArtist.textContent = state.active
+    ? (state.artist || '').replace(/\s[–—]\s/g, ' - ')
+    : 'Open Apple Music to begin';
 
   if (state.albumArt) {
     albumArt.hidden = false;
@@ -528,59 +555,23 @@ function renderState(state) {
   renderPlaybackToggles();
 
   const disabled = !state.active;
-  btnPrev.disabled = disabled;
-  btnPlay.disabled = disabled;
-  btnNext.disabled = disabled;
-  btnShuffle.disabled = disabled;
-  btnRepeat.disabled = disabled;
+  if (btnPrev) btnPrev.disabled = disabled;
+  if (btnPlay) btnPlay.disabled = disabled;
+  if (btnNext) btnNext.disabled = disabled;
+  if (btnShuffle) btnShuffle.disabled = disabled;
+  if (btnRepeat) btnRepeat.disabled = disabled;
 }
 
 /**
  * @param {{ volume: number, muted: boolean }} vol
  */
 function renderVolume(vol) {
+  if (!volumeSlider || !btnMute) return;
   if (!volumeDragging) {
     volumeSlider.value = String(vol.muted ? 0 : vol.volume);
   }
   btnMute.classList.toggle('is-muted', vol.muted);
   btnMute.setAttribute('aria-label', vol.muted ? 'Unmute' : 'Mute');
-}
-
-function playOpenAnimation() {
-  popoverInner.classList.remove('is-closing', 'is-hidden');
-  popoverInner.classList.add('is-opening');
-  syncBackground();
-  popoverInner.addEventListener(
-    'animationend',
-    () => popoverInner.classList.remove('is-opening'),
-    { once: true },
-  );
-}
-
-function playCloseAnimation() {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      stopBackgroundEffects();
-      popoverInner.classList.add('is-hidden');
-      popoverInner.classList.remove('is-closing');
-      resolve();
-    };
-
-    popoverInner.classList.add('is-closing');
-    popoverInner.classList.remove('is-hidden');
-
-    const onEnd = (e) => {
-      if (e.target !== popoverInner) return;
-      popoverInner.removeEventListener('transitionend', onEnd);
-      finish();
-    };
-
-    popoverInner.addEventListener('transitionend', onEnd);
-    setTimeout(finish, 250);
-  });
 }
 
 function handleControl(action) {
@@ -589,11 +580,11 @@ function handleControl(action) {
   if (action === 'toggle') {
     updatePlayButton(!currentState.isPlaying);
   } else if (action === 'shuffle') {
-    localShuffle = !localShuffle;
+    currentState = { ...currentState, shuffleActive: !currentState.shuffleActive };
     renderPlaybackToggles();
   } else if (action === 'repeat') {
     const cycle = { off: 'all', all: 'one', one: 'off' };
-    localRepeat = cycle[localRepeat] || 'off';
+    currentState = { ...currentState, repeatMode: cycle[currentState.repeatMode] || 'off' };
     renderPlaybackToggles();
   } else if (action === 'next' || action === 'previous') {
     currentArtUrl = null;
@@ -603,36 +594,8 @@ function handleControl(action) {
   window.musicController.control(action);
 }
 
-btnPrev.addEventListener('click', () => handleControl('previous'));
-btnPlay.addEventListener('click', () => handleControl('toggle'));
-btnNext.addEventListener('click', () => handleControl('next'));
-btnShuffle.addEventListener('click', () => handleControl('shuffle'));
-btnRepeat.addEventListener('click', () => handleControl('repeat'));
-
-btnVolDown.addEventListener('click', () => {
-  const next = Math.max(0, Number(volumeSlider.value) - 5);
-  volumeSlider.value = String(next);
-  lastVolumeSent = next;
-  btnMute.classList.toggle('is-muted', next === 0);
-  window.musicController.adjustVolume(-5);
-});
-
-btnVolUp.addEventListener('click', () => {
-  const next = Math.min(100, Number(volumeSlider.value) + 5);
-  volumeSlider.value = String(next);
-  lastVolumeSent = next;
-  btnMute.classList.toggle('is-muted', next === 0);
-  window.musicController.adjustVolume(5);
-});
-
-btnMute.addEventListener('click', () => {
-  const isMuted = btnMute.classList.contains('is-muted');
-  btnMute.classList.toggle('is-muted', !isMuted);
-  window.musicController.setMuted(!isMuted);
-});
-
 async function syncVolumeFromSlider() {
-  if (volumeSyncPending) return;
+  if (volumeSyncPending || !volumeSlider) return;
   volumeSyncPending = true;
   const value = Number(volumeSlider.value);
   lastVolumeSent = -1;
@@ -645,22 +608,9 @@ async function syncVolumeFromSlider() {
   }
 }
 
-volumeSlider.addEventListener('pointerdown', (event) => {
-  volumeDragging = true;
-  volumeSlider.setPointerCapture(event.pointerId);
-});
-
-volumeSlider.addEventListener('input', () => {
-  const value = Number(volumeSlider.value);
-  btnMute.classList.toggle('is-muted', value === 0);
-  if (value === lastVolumeSent) return;
-  lastVolumeSent = value;
-  window.musicController.setVolumeLive(value);
-});
-
 function endVolumeDrag(event) {
   if (!volumeDragging) return;
-  if (volumeSlider.hasPointerCapture(event.pointerId)) {
+  if (volumeSlider?.hasPointerCapture(event.pointerId)) {
     volumeSlider.releasePointerCapture(event.pointerId);
   }
   void syncVolumeFromSlider().finally(() => {
@@ -668,48 +618,162 @@ function endVolumeDrag(event) {
   });
 }
 
-volumeSlider.addEventListener('pointerup', endVolumeDrag);
-volumeSlider.addEventListener('pointercancel', endVolumeDrag);
-
-volumeSlider.addEventListener('change', () => {
-  if (volumeDragging || volumeSyncPending) return;
-  void syncVolumeFromSlider();
-});
-
-window.musicController.onUpdate((state) => renderState(state));
-window.musicController.onArtUpdate((dataUrl) => applyAlbumArtUrl(dataUrl));
-albumArt.addEventListener('load', () => sampleAndApply(albumArt));
-window.musicController.onVolumeUpdate((vol) => renderVolume(vol));
-window.musicController.onThemeUpdate((theme) => applyTheme(theme));
-popover.addEventListener('pointerdown', (event) => {
-  if (Date.now() < ignoreOutsideUntil) return;
-  if (!event.target.closest('.popover__inner')) {
-    window.musicController.dismiss();
+function bindDomRefs() {
+  albumArt = document.getElementById('album-art');
+  albumArtPlaceholder = document.getElementById('album-art-placeholder');
+  colorBendsMount = document.getElementById('color-bends');
+  floatingLinesMount = document.getElementById('floating-lines');
+  albumBlurImage = document.querySelector('.album-blur__image');
+  albumBlurPan = document.querySelector('.album-blur__pan');
+  trackTitle = document.getElementById('track-title');
+  trackArtist = document.getElementById('track-artist');
+  btnPrev = document.getElementById('btn-prev');
+  btnPlay = document.getElementById('btn-play');
+  btnNext = document.getElementById('btn-next');
+  btnShuffle = document.getElementById('btn-shuffle');
+  btnRepeat = document.getElementById('btn-repeat');
+  btnVolDown = document.getElementById('btn-vol-down');
+  btnVolUp = document.getElementById('btn-vol-up');
+  btnMute = document.getElementById('btn-mute');
+  volumeSlider = document.getElementById('volume-slider');
+  if (albumArt) {
+    albumArt.onload = () => sampleAndApply(albumArt);
   }
-});
+}
 
-window.musicController.onLayout(({ card }) => {
+function applyCardLayout(card) {
+  if (!card) return;
   document.documentElement.style.setProperty('--card-x', `${card.x}px`);
   document.documentElement.style.setProperty('--card-y', `${card.y}px`);
   document.documentElement.style.setProperty('--card-w', `${card.width}px`);
   document.documentElement.style.setProperty('--card-h', `${card.height}px`);
-});
+}
 
-window.musicController.onRequestOpen(async () => {
-  ignoreOutsideUntil = Date.now() + 350;
-  try {
-    applyTheme(await window.musicController.getTheme());
-  } catch {
-    /* use current theme */
-  }
-  playOpenAnimation();
-  try {
-    renderVolume(await window.musicController.getVolume());
-  } catch {
-    /* volume unavailable */
-  }
-});
-window.musicController.onRequestClose(async () => {
-  await playCloseAnimation();
-  window.musicController.notifyCloseComplete();
-});
+/**
+ * @param {import('react').RefObject<{ open: () => void, close: () => Promise<void>, onEnterComplete: (() => void) | null, onExitStart: (() => void) | null }>} controllerRef
+ */
+export function initRenderer(controllerRef) {
+  animationControllerRef = controllerRef;
+
+  const popover = document.getElementById('popover');
+
+  controllerRef.current.onEnterComplete = () => syncBackground();
+  controllerRef.current.onExitStart = () => stopBackgroundEffects();
+
+  window.musicController.onUpdate((state) => renderState(state));
+  window.musicController.onArtUpdate((dataUrl) => applyAlbumArtUrl(dataUrl));
+  window.musicController.onVolumeUpdate((vol) => renderVolume(vol));
+  window.musicController.onThemeUpdate((theme) => applyTheme(theme));
+
+  popover.addEventListener('pointerdown', (event) => {
+    if (Date.now() < ignoreOutsideUntil) return;
+    if (!event.target.closest('.popover__inner')) {
+      window.musicController.dismiss();
+    }
+  });
+
+  popover.addEventListener('click', (event) => {
+    const target = event.target.closest('button');
+    if (!target?.id) return;
+
+    switch (target.id) {
+      case 'btn-prev':
+        handleControl('previous');
+        break;
+      case 'btn-play':
+        handleControl('toggle');
+        break;
+      case 'btn-next':
+        handleControl('next');
+        break;
+      case 'btn-shuffle':
+        handleControl('shuffle');
+        break;
+      case 'btn-repeat':
+        handleControl('repeat');
+        break;
+      case 'btn-vol-down': {
+        if (!volumeSlider || !btnMute) return;
+        const next = Math.max(0, Number(volumeSlider.value) - 5);
+        volumeSlider.value = String(next);
+        lastVolumeSent = next;
+        btnMute.classList.toggle('is-muted', next === 0);
+        window.musicController.adjustVolume(-5);
+        break;
+      }
+      case 'btn-vol-up': {
+        if (!volumeSlider || !btnMute) return;
+        const next = Math.min(100, Number(volumeSlider.value) + 5);
+        volumeSlider.value = String(next);
+        lastVolumeSent = next;
+        btnMute.classList.toggle('is-muted', next === 0);
+        window.musicController.adjustVolume(5);
+        break;
+      }
+      case 'btn-mute': {
+        if (!btnMute) return;
+        const isMuted = btnMute.classList.contains('is-muted');
+        btnMute.classList.toggle('is-muted', !isMuted);
+        window.musicController.setMuted(!isMuted);
+        break;
+      }
+      default:
+        break;
+    }
+  });
+
+  popover.addEventListener('pointerdown', (event) => {
+    if (event.target?.id === 'volume-slider') {
+      volumeDragging = true;
+      event.target.setPointerCapture(event.pointerId);
+    }
+  });
+
+  popover.addEventListener('input', (event) => {
+    if (event.target?.id !== 'volume-slider' || !btnMute) return;
+    const value = Number(event.target.value);
+    btnMute.classList.toggle('is-muted', value === 0);
+    if (value === lastVolumeSent) return;
+    lastVolumeSent = value;
+    window.musicController.setVolumeLive(value);
+  });
+
+  popover.addEventListener('pointerup', (event) => {
+    if (event.target?.id === 'volume-slider') endVolumeDrag(event);
+  });
+
+  popover.addEventListener('pointercancel', (event) => {
+    if (event.target?.id === 'volume-slider') endVolumeDrag(event);
+  });
+
+  popover.addEventListener('change', (event) => {
+    if (event.target?.id !== 'volume-slider') return;
+    if (volumeDragging || volumeSyncPending) return;
+    void syncVolumeFromSlider();
+  });
+
+  window.musicController.onLayout(({ card }) => {
+    applyCardLayout(card);
+  });
+
+  window.musicController.onRequestOpen(async (payload) => {
+    applyCardLayout(payload?.card);
+    ignoreOutsideUntil = Date.now() + 350;
+    animationControllerRef.current.open();
+    bindDomRefs();
+    try {
+      applyTheme(await window.musicController.getTheme(), { sync: false });
+    } catch {
+      /* use current theme */
+    }
+    try {
+      renderVolume(await window.musicController.getVolume());
+    } catch {
+      /* volume unavailable */
+    }
+  });
+
+  window.musicController.onRequestClose(async () => {
+    await animationControllerRef.current.close();
+  });
+}

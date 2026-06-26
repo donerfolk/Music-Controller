@@ -59,6 +59,8 @@ function stateKey(state) {
     trackNumber: state.trackNumber ?? 0,
     duration: state.duration ?? 0,
     isPlaying: state.isPlaying,
+    shuffleActive: state.shuffleActive,
+    repeatMode: state.repeatMode,
     artFp: state.albumArt ? artFingerprint(state.albumArt) : '',
   });
 }
@@ -137,21 +139,26 @@ function positionPopover() {
 
   cardLayout = { x, y, width: WINDOW_WIDTH, height: WINDOW_HEIGHT };
   popover.setBounds(workArea, false);
-  sendPopoverLayout();
+  broadcastPopoverLayout();
 }
 
 function sendPopoverLayout() {
   if (!popover || popover.isDestroyed()) return;
 
   const workArea = popover.getBounds();
-  popover.webContents.send('window:layout', {
+  return {
     card: {
       x: cardLayout.x - workArea.x,
       y: cardLayout.y - workArea.y,
       width: cardLayout.width,
       height: cardLayout.height,
     },
-  });
+  };
+}
+
+function broadcastPopoverLayout() {
+  if (!popover || popover.isDestroyed()) return;
+  popover.webContents.send('window:layout', sendPopoverLayout());
 }
 
 function destroyPopover() {
@@ -201,6 +208,12 @@ function createPopover() {
 
   popover.on('closed', () => {
     popover = null;
+    // Pre-load the next window immediately so subsequent opens are instant.
+    if (!app.isQuitting) {
+      setImmediate(() => {
+        if (!popover) createPopover();
+      });
+    }
   });
 }
 
@@ -270,8 +283,8 @@ function revealPopover() {
   popover.setAlwaysOnTop(true, 'pop-up-menu');
   popover.show();
   popover.moveTop();
-  sendPopoverLayout();
-  popover.webContents.send('window:request-open');
+  // Compute layout after show() so getBounds() reflects the final OS position.
+  popover.webContents.send('window:request-open', sendPopoverLayout());
   popover.webContents.send('theme:update', getBackgroundTheme());
 
   setImmediate(() => {
@@ -298,10 +311,15 @@ function openPopover(anchor) {
     return;
   }
 
-  createPopover();
+  if (!popover || popover.isDestroyed()) {
+    createPopover();
+  }
 
-  const show = () => revealPopover();
-  popover.webContents.once('did-finish-load', show);
+  if (popover.webContents.isLoading()) {
+    popover.webContents.once('did-finish-load', revealPopover);
+  } else {
+    revealPopover();
+  }
 }
 
 function extendBlurGuard(ms = BLUR_GUARD_MS) {
@@ -391,6 +409,8 @@ if (gotSingleInstanceLock) {
     });
     setupIpc();
     startPolling();
+    // Pre-load the popover window so it's ready before the first tray click.
+    createPopover();
   });
 }
 

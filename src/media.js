@@ -103,6 +103,9 @@ function getSession() {
  * @param {(() => void)=} onComplete
  */
 function control(action, onComplete) {
+  if (action === 'shuffle' || action === 'repeat') {
+    worker?.postMessage({ type: 'invalidate-toggles' });
+  }
   mediaControl.send(action, onComplete);
 }
 

@@ -1,0 +1,134 @@
+export function PopoverContent() {
+  return (
+    <>
+      <div className="popover__art-bg" aria-hidden="true">
+        <div id="color-bends" className="color-bends-container" />
+        <div id="floating-lines" className="floating-lines-container" />
+        <div className="album-blur" aria-hidden="true">
+          <div className="album-blur__pan">
+            <img className="album-blur__image" alt="" />
+          </div>
+        </div>
+        <div className="popover__art-bg__dim" aria-hidden="true" />
+      </div>
+      <div className="popover__ambient" aria-hidden="true" />
+      <div className="popover__content">
+        <div className="track">
+          <div className="track__art-wrap">
+            <img id="album-art" className="track__art" alt="" />
+            <div
+              id="album-art-placeholder"
+              className="track__art track__art--placeholder"
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </div>
+          </div>
+          <div className="track__meta">
+            <p id="track-title" className="track__title">
+              Not playing
+            </p>
+            <p id="track-artist" className="track__artist" />
+          </div>
+        </div>
+
+        <div className="controls" role="toolbar" aria-label="Playback controls">
+          <button
+            className="control-btn control-btn--aux"
+            id="btn-shuffle"
+            type="button"
+            aria-label="Shuffle off"
+            aria-pressed="false"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+          <button className="control-btn" id="btn-prev" type="button" aria-label="Previous track">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 5h2v14H5z" fill="currentColor" />
+              <path d="M19 5L11 12l8 7V5z" fill="currentColor" />
+              <path d="M13 5L5 12l8 7V5z" fill="currentColor" />
+            </svg>
+          </button>
+          <button className="control-btn control-btn--primary" id="btn-play" type="button" aria-label="Play">
+            <svg className="icon-play" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5v14l11-7z" fill="currentColor" />
+            </svg>
+            <svg className="icon-pause" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" />
+              <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+          <button className="control-btn" id="btn-next" type="button" aria-label="Next track">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 5l8 7-8 7V5z" fill="currentColor" />
+              <path d="M11 5l8 7-8 7V5z" fill="currentColor" />
+              <path d="M17 5h2v14h-2z" fill="currentColor" />
+            </svg>
+          </button>
+          <button
+            className="control-btn control-btn--aux"
+            id="btn-repeat"
+            type="button"
+            aria-label="Repeat off"
+            aria-pressed="false"
+          >
+            <svg className="icon-repeat" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M7 7h8.5l-2.5-2.5L14 3l5 5-5 5-1-1.5L15.5 9H7V7zm10 10H8.5l2.5 2.5L10 21l-5-5 5-5 1 1.5L8.5 15H17v2z"
+                fill="currentColor"
+              />
+            </svg>
+            <span className="icon-repeat-one" aria-hidden="true">
+              1
+            </span>
+          </button>
+        </div>
+
+        <div className="volume" role="group" aria-label="Volume">
+          <button className="control-btn control-btn--small" id="btn-vol-down" type="button" aria-label="Volume down">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 9v6h4l5 4V5L9 9H5z" fill="currentColor" />
+            </svg>
+          </button>
+          <input
+            id="volume-slider"
+            className="volume__slider"
+            type="range"
+            min="0"
+            max="100"
+            defaultValue="50"
+            aria-label="Volume level"
+          />
+          <button className="control-btn control-btn--small" id="btn-vol-up" type="button" aria-label="Volume up">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M5 9v6h4l5 4V5L9 9H5zM16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+          <button className="control-btn control-btn--small" id="btn-mute" type="button" aria-label="Mute">
+            <svg className="icon-vol-on" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M5 9v6h4l5 4V5L9 9H5zm12.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
+                fill="currentColor"
+              />
+            </svg>
+            <svg className="icon-vol-off" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 9v6h4l5 4V5L9 9H5z" fill="currentColor" />
+              <line x1="3" y1="3" x2="21" y2="21" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}

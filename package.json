@@ -4,7 +4,8 @@
   "description": "Apple Music tray controller for Windows via SMTC",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron .",
+    "build:renderer": "esbuild src/renderer/entry.jsx --bundle --outfile=src/renderer/bundle.js --format=esm --jsx=automatic --loader:.js=jsx --external:./color-bends.js --external:./floating-lines.js",
+    "start": "npm run build:renderer && electron .",
     "stop": "powershell -NoProfile -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\"",
     "restart": "npm run stop && npm start",
     "generate-icons": "node scripts/generate-icons.js",
@@ -16,7 +17,13 @@
     "@coooookies/windows-smtc-monitor": "^1.0.12",
     "color-thief-browser": "^2.0.2",
     "electron": "^42.5.0",
+    "framer-motion": "^12.23.12",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
     "three": "^0.180.0",
     "win-media-control": "^0.1.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9"
   }
 }

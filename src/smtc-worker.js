@@ -4,7 +4,18 @@
 'use strict';
 
 const { parentPort } = require('worker_threads');
+const { execFileSync } = require('child_process');
+const path = require('path');
 const { SMTCMonitor } = require('@coooookies/windows-smtc-monitor');
+
+const PLAYBACK_SCRIPT = path.join(__dirname, '..', 'scripts', 'apple-music-playback.ps1');
+// ponytail: UI Automation query is ~5s; cache and refresh on toggle invalidation or every 3s
+const TOGGLE_QUERY_MS = 3000;
+
+/** @type {{ shuffleActive: boolean, repeatMode: string } | null} */
+let cachedToggles = null;
+let cachedTogglesAt = 0;
+let togglesStale = true;
 
 const PlaybackStatus = {
   Closed: 0,
@@ -23,6 +34,46 @@ const monitor = new SMTCMonitor();
 function isAppleMusicSession(appId) {
   if (!appId) return false;
   return APPLE_PATTERNS.some((re) => re.test(appId));
+}
+
+function queryApplePlaybackState() {
+  try {
+    const out = execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', PLAYBACK_SCRIPT, 'query'],
+      { encoding: 'utf8', timeout: 10000, windowsHide: true },
+    );
+    const data = JSON.parse(out.trim());
+    const repeat = ['off', 'all', 'one'].includes(data.repeat) ? data.repeat : 'off';
+    return { shuffleActive: Boolean(data.shuffle), repeatMode: repeat };
+  } catch {
+    return null;
+  }
+}
+
+function applyApplePlaybackToggles(state) {
+  if (!state.active || !isAppleMusicSession(state.sourceAppId)) {
+    cachedToggles = null;
+    togglesStale = true;
+    return state;
+  }
+
+  const now = Date.now();
+  const cacheFresh = cachedToggles && !togglesStale && now - cachedTogglesAt < TOGGLE_QUERY_MS;
+  if (!cacheFresh) {
+    const toggles = queryApplePlaybackState();
+    if (toggles) {
+      cachedToggles = toggles;
+      cachedTogglesAt = now;
+      togglesStale = false;
+    }
+  }
+
+  if (cachedToggles) {
+    state.shuffleActive = cachedToggles.shuffleActive;
+    state.repeatMode = cachedToggles.repeatMode;
+  }
+  return state;
 }
 
 function thumbnailToDataUrl(thumbnail) {
@@ -78,7 +129,8 @@ function pickSession() {
 
 function fetchSession() {
   try {
-    return normalizeSession(pickSession());
+    const state = applyApplePlaybackToggles(normalizeSession(pickSession()));
+    return state;
   } catch {
     return normalizeSession(null);
   }
@@ -106,6 +158,11 @@ for (const event of [
 }
 
 parentPort.on('message', (msg) => {
+  if (msg?.type === 'invalidate-toggles') {
+    togglesStale = true;
+    emitState();
+    return;
+  }
   if (msg?.type === 'poll') emitState();
 });
 

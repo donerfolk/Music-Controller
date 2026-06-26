@@ -41,7 +41,7 @@ contextBridge.exposeInMainWorld('musicController', {
   control: (action) => ipcRenderer.send('media:control', action),
 
   onRequestOpen: (callback) => {
-    const handler = () => callback();
+    const handler = (_event, payload) => callback(payload);
     ipcRenderer.on('window:request-open', handler);
     return () => ipcRenderer.removeListener('window:request-open', handler);
   },

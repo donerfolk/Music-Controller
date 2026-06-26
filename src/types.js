@@ -8,6 +8,8 @@
  * @property {boolean} isPlaying
  * @property {number} trackNumber
  * @property {number} duration
+ * @property {boolean} shuffleActive
+ * @property {'off' | 'all' | 'one'} repeatMode
  * @property {string | null} sourceAppId
  */
 

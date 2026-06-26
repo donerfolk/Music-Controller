@@ -43,11 +43,6 @@ body {
 }
 
 .popover__inner {
-  position: absolute;
-  left: var(--card-x, 0);
-  top: var(--card-y, 0);
-  width: var(--card-w, 408px);
-  height: var(--card-h, 248px);
   border-radius: var(--radius);
   border: none;
   background: var(--bg);
@@ -58,38 +53,10 @@ body {
     0 0 12px var(--ambient-1),
     0 0 18px var(--ambient-2);
   overflow: hidden;
-  opacity: 1;
-  transform: translateY(0);
-  transition:
-    opacity var(--anim-duration) var(--anim-ease),
-    transform var(--anim-duration) var(--anim-ease);
-}
-
-.popover__inner.is-hidden {
-  opacity: 0;
-  transform: translateY(10px);
-  pointer-events: none;
-}
-
-.popover__inner.is-opening {
-  animation: popoverIn var(--anim-duration) var(--anim-ease) forwards;
-}
-
-@keyframes popoverIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.popover__inner.is-closing {
-  opacity: 0;
-  transform: translateY(10px);
-  pointer-events: none;
+  /* Promote to compositor layer for GPU-accelerated blur animation.
+     transform and opacity are auto-composited when actively animating;
+     filter needs an explicit hint or it runs on the CPU every frame. */
+  will-change: filter;
 }
 
 .popover__art-bg {
