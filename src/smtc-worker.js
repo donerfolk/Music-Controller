@@ -17,6 +17,9 @@ const PlaybackStatus = {
 
 const APPLE_PATTERNS = [/appleinc/i, /applemusic/i, /music\.exe/i];
 
+/** @type {import('@coooookies/windows-smtc-monitor').SMTCMonitor} */
+const monitor = new SMTCMonitor();
+
 function isAppleMusicSession(appId) {
   if (!appId) return false;
   return APPLE_PATTERNS.some((re) => re.test(appId));
@@ -39,6 +42,8 @@ function normalizeSession(session) {
       album: '',
       albumArt: null,
       isPlaying: false,
+      trackNumber: 0,
+      duration: 0,
       shuffleActive: false,
       repeatMode: 'off',
       sourceAppId: null,
@@ -53,27 +58,55 @@ function normalizeSession(session) {
     album: session.media?.albumTitle || '',
     albumArt: thumbnailToDataUrl(session.media?.thumbnail),
     isPlaying: status === PlaybackStatus.Playing,
+    trackNumber: session.media?.trackNumber ?? 0,
+    duration: session.timeline?.duration ?? 0,
     shuffleActive: false,
     repeatMode: 'off',
     sourceAppId: session.sourceAppId ?? null,
   };
 }
 
+function pickSession() {
+  const monitorApple = monitor.sessions.find((s) => isAppleMusicSession(s.sourceAppId));
+  const fresh = SMTCMonitor.getMediaSessions?.() ?? [];
+  const freshApple = fresh.find((s) => isAppleMusicSession(s.sourceAppId));
+
+  const thumbLen = (s) => s?.media?.thumbnail?.length ?? 0;
+  if (thumbLen(freshApple) >= thumbLen(monitorApple)) return freshApple ?? monitorApple;
+  return monitorApple ?? freshApple ?? SMTCMonitor.getCurrentMediaSession?.() ?? null;
+}
+
 function fetchSession() {
   try {
-    const sessions = SMTCMonitor.getMediaSessions?.() ?? [];
-    const apple = sessions.find((s) => isAppleMusicSession(s.sourceAppId));
-    if (apple) return normalizeSession(apple);
-    return normalizeSession(SMTCMonitor.getCurrentMediaSession?.() ?? null);
-  } catch (err) {
+    return normalizeSession(pickSession());
+  } catch {
     return normalizeSession(null);
   }
 }
 
+let emitTimer = null;
+
+function emitState() {
+  parentPort.postMessage({ type: 'state', state: fetchSession() });
+}
+
+function scheduleEmit() {
+  clearTimeout(emitTimer);
+  emitTimer = setTimeout(emitState, 40);
+}
+
+for (const event of [
+  'session-media-changed',
+  'current-session-changed',
+  'session-added',
+  'session-removed',
+  'session-playback-changed',
+]) {
+  monitor.on(event, scheduleEmit);
+}
+
 parentPort.on('message', (msg) => {
-  if (msg?.type === 'poll') {
-    parentPort.postMessage({ type: 'state', state: fetchSession() });
-  }
+  if (msg?.type === 'poll') emitState();
 });
 
-parentPort.postMessage({ type: 'state', state: fetchSession() });
+emitState();

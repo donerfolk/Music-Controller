@@ -10,6 +10,7 @@ const APP_ICON = path.join(__dirname, '..', 'assets', 'appicon.png');
 
 const THEME_MENU = [
   { id: 'color-bends', label: 'Color Bends' },
+  { id: 'floating-lines', label: 'Floating Lines' },
   { id: 'simple-gradient', label: 'Simple Gradient' },
   { id: 'album-blur', label: 'Album Blur' },
 ];

@@ -6,13 +6,13 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
-/** @typedef {'color-bends' | 'simple-gradient' | 'album-blur'} BackgroundTheme */
+/** @typedef {'color-bends' | 'simple-gradient' | 'album-blur' | 'floating-lines'} BackgroundTheme */
 
-const VALID = new Set(['color-bends', 'simple-gradient', 'album-blur']);
+const VALID = new Set(['color-bends', 'simple-gradient', 'album-blur', 'floating-lines']);
 const DEFAULT_THEME = 'color-bends';
 
 /** @type {BackgroundTheme[]} */
-const THEME_IDS = ['color-bends', 'simple-gradient', 'album-blur'];
+const THEME_IDS = ['color-bends', 'simple-gradient', 'album-blur', 'floating-lines'];
 
 function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');

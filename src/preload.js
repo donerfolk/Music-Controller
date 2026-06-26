@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('musicController', {
     return () => ipcRenderer.removeListener('media:update', handler);
   },
 
+  onArtUpdate: (callback) => {
+    const handler = (_event, albumArt) => callback(albumArt);
+    ipcRenderer.on('media:art', handler);
+    return () => ipcRenderer.removeListener('media:art', handler);
+  },
+
   onRequestClose: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('window:request-close', handler);

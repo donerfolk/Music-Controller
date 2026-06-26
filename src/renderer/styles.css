@@ -7,11 +7,11 @@
   --bg-fallback: #0a0a0e;
   --text: #fafafa;
   --text-muted: rgba(250, 250, 250, 0.5);
-  --accent: #a78bfa;
-  --accent-glow: rgba(167, 139, 250, 0.55);
-  --ambient-base: rgba(167, 139, 250, 0.48);
-  --ambient-1: rgba(167, 139, 250, 0.62);
-  --ambient-2: rgba(120, 100, 200, 0.58);
+  --accent: #9a9aa4;
+  --accent-glow: rgba(154, 154, 164, 0.35);
+  --ambient-base: rgba(90, 90, 100, 0.2);
+  --ambient-1: rgba(120, 120, 130, 0.28);
+  --ambient-2: rgba(100, 100, 110, 0.24);
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   --anim-duration: 180ms;
   --anim-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -104,12 +104,21 @@ body {
 .popover__art-bg__dim {
   position: absolute;
   inset: 0;
-  background: rgba(10, 10, 14, 0.42);
+  background: rgba(10, 10, 14, 0.52);
   pointer-events: none;
   z-index: 1;
 }
 
 .color-bends-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.floating-lines-container {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -152,16 +161,32 @@ body {
 }
 
 /* Theme: color bends */
-.popover__inner[data-theme="color-bends"] .album-blur {
+.popover__inner[data-theme="color-bends"] .album-blur,
+.popover__inner[data-theme="color-bends"] .floating-lines-container {
   display: none;
 }
 
 .popover__inner[data-theme="color-bends"] .popover__ambient {
-  opacity: 0.35;
+  opacity: 0.15;
+}
+
+/* Theme: floating lines */
+.popover__inner[data-theme="floating-lines"] .color-bends-container,
+.popover__inner[data-theme="floating-lines"] .album-blur {
+  display: none;
+}
+
+.popover__inner[data-theme="floating-lines"] .popover__art-bg {
+  pointer-events: auto;
+}
+
+.popover__inner[data-theme="floating-lines"] .popover__ambient {
+  opacity: 0.15;
 }
 
 /* Theme: album blur */
 .popover__inner[data-theme="album-blur"] .color-bends-container,
+.popover__inner[data-theme="album-blur"] .floating-lines-container,
 .popover__inner[data-theme="album-blur"] .popover__art-bg__dim {
   display: none;
 }
@@ -189,7 +214,7 @@ body {
 
 .popover__content {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   height: 100%;
   display: flex;
   flex-direction: column;

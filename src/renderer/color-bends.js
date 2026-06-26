@@ -117,9 +117,9 @@ export function createColorBends(container, opts = {}) {
     warpStrength: 1,
     mouseInfluence: 0,
     parallax: 0.5,
-    noise: 0.15,
+    noise: 0.12,
     iterations: 1,
-    intensity: 1.5,
+    intensity: 1.05,
     bandWidth: 6,
     ...opts,
   };
@@ -164,7 +164,7 @@ export function createColorBends(container, opts = {}) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, config.transparent ? 0 : 1);
   renderer.domElement.style.cssText = 'width:100%;height:100%;display:block';
-  container.appendChild(renderer.domElement);
+  container.replaceChildren(renderer.domElement);
 
   const clock = new THREE.Clock();
   let raf = 0;
@@ -176,12 +176,12 @@ export function createColorBends(container, opts = {}) {
 
   const applyColors = (colors) => {
     const arr = (colors || []).filter(Boolean).slice(0, MAX_COLORS).map(hexToVec3);
-    for (let i = 0; i < MAX_COLORS; i++) {
-      const vec = material.uniforms.uColors.value[i];
-      if (i < arr.length) vec.copy(arr[i]);
-      else vec.set(0, 0, 0);
-    }
+    // ponytail: replace the array ref — in-place vec.copy() doesn't reliably re-upload
+    material.uniforms.uColors.value = Array.from({ length: MAX_COLORS }, (_, i) =>
+      i < arr.length ? arr[i] : new THREE.Vector3(0, 0, 0),
+    );
     material.uniforms.uColorCount.value = arr.length;
+    material.uniformsNeedUpdate = true;
   };
 
   applyColors(config.colors);
@@ -228,6 +228,9 @@ export function createColorBends(container, opts = {}) {
   return {
     updateColors(colors) {
       applyColors(colors);
+      // ponytail: RAF may be throttled while the popover is unfocused (skip while
+      // open), so force one paint to apply the new palette immediately.
+      renderer.render(scene, camera);
     },
     resize() {
       resize();

@@ -6,7 +6,7 @@ const path = require('path');
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const { createTray, destroyTray, setTrayIconState, getTrayBounds, refreshTrayMenu } = require('./tray');
 const { getBackgroundTheme, setBackgroundTheme } = require('./theme');
-const { getSession, control, startSessionPolling, stopSessionPolling, refreshSession, warmControl } = require('./media');
+const { getSession, control, startSessionPolling, stopSessionPolling, refreshSession, forceRefreshSession, warmControl } = require('./media');
 const { getVolumeState, setVolume, setVolumeLive, adjustVolume, setMuted, warmVolume, shutdown: shutdownVolume } = require('./volume');
 
 const WINDOW_WIDTH = 408;
@@ -28,6 +28,7 @@ let closeTimer = null;
 let isClosing = false;
 let ignoreBlurUntil = 0;
 let lastStateKey = '';
+let lastBroadcastArtFp = '';
 
 // Tray apps should keep running when the popover is hidden.
 app.isQuitting = false;
@@ -41,15 +42,57 @@ if (!gotSingleInstanceLock) {
   });
 }
 
+function artFingerprint(art) {
+  let h = 5381;
+  for (let i = 0; i < art.length; i++) {
+    h = ((h << 5) + h + art.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36);
+}
+
 function stateKey(state) {
   return JSON.stringify({
     active: state.active,
     title: state.title,
     artist: state.artist,
     album: state.album,
+    trackNumber: state.trackNumber ?? 0,
+    duration: state.duration ?? 0,
     isPlaying: state.isPlaying,
-    artLen: state.albumArt ? state.albumArt.length : 0,
+    artFp: state.albumArt ? artFingerprint(state.albumArt) : '',
   });
+}
+
+function broadcastState(state) {
+  const key = stateKey(state);
+  if (key === lastStateKey) return;
+  lastStateKey = key;
+
+  setTrayIconState(state.isPlaying);
+  if (popover && !popover.isDestroyed() && popover.isVisible()) {
+    popover.webContents.send('media:update', state);
+  }
+}
+
+function nudgeSessionRefresh() {
+  lastStateKey = '';
+  refreshSession();
+}
+
+function broadcastArt(albumArt) {
+  if (!albumArt) return;
+  const fp = artFingerprint(albumArt);
+  if (fp === lastBroadcastArtFp) return;
+  lastBroadcastArtFp = fp;
+  if (popover && !popover.isDestroyed() && popover.isVisible()) {
+    popover.webContents.send('media:art', albumArt);
+  }
+}
+
+function nudgeForceRefresh() {
+  lastStateKey = '';
+  lastBroadcastArtFp = '';
+  forceRefreshSession();
 }
 
 /**
@@ -161,17 +204,6 @@ function createPopover() {
   });
 }
 
-function broadcastState(state) {
-  const key = stateKey(state);
-  if (key === lastStateKey) return;
-  lastStateKey = key;
-
-  setTrayIconState(state.isPlaying);
-  if (popover && !popover.isDestroyed()) {
-    popover.webContents.send('media:update', state);
-  }
-}
-
 function broadcastTheme(theme) {
   if (popover && !popover.isDestroyed()) {
     popover.webContents.send('theme:update', theme);
@@ -200,7 +232,7 @@ async function pushVolumeState() {
 }
 
 function startPolling() {
-  pollTimer = startSessionPolling(POLL_INTERVAL_MS, broadcastState);
+  pollTimer = startSessionPolling(POLL_INTERVAL_MS, broadcastState, broadcastArt);
 }
 
 function clearCloseTimer() {
@@ -249,7 +281,10 @@ function revealPopover() {
   });
 
   lastStateKey = '';
-  broadcastState(getSession());
+  lastBroadcastArtFp = '';
+  const session = getSession();
+  broadcastState(session);
+  if (session.albumArt) broadcastArt(session.albumArt);
 }
 
 /**
@@ -283,18 +318,27 @@ function refocusPopover() {
 function setupIpc() {
   ipcMain.on('media:control', (_event, action) => {
     const isPlaybackToggle = action === 'shuffle' || action === 'repeat';
-    if (isPlaybackToggle) {
+    const isTrackChange = action === 'next' || action === 'previous';
+    if (isPlaybackToggle || isTrackChange) {
       extendBlurGuard(PLAYBACK_BLUR_GUARD_MS);
     }
 
     control(action, () => {
-      if (!isPlaybackToggle) return;
+      if (!isPlaybackToggle && !isTrackChange) return;
       extendBlurGuard(BLUR_GUARD_MS);
       setImmediate(() => refocusPopover());
     });
 
-    lastStateKey = '';
-    refreshSession();
+    if (isTrackChange) {
+      nudgeForceRefresh();
+      for (const ms of [200, 500, 1000, 1800, 3000]) {
+        setTimeout(nudgeForceRefresh, ms);
+      }
+    } else {
+      nudgeSessionRefresh();
+      setTimeout(nudgeSessionRefresh, 300);
+      setTimeout(nudgeSessionRefresh, 900);
+    }
   });
 
   ipcMain.handle('volume:get', async () => getVolumeState());
