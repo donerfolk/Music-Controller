@@ -44,6 +44,8 @@ let btnVolUp = null;
 let btnMute = null;
 /** @type {HTMLInputElement | null} */
 let volumeSlider = null;
+/** @type {HTMLInputElement | null} */
+let volumeSliderBound = null;
 
 /** @type {import('../types').MediaState | null} */
 let currentState = null;
@@ -85,6 +87,169 @@ function extractPaletteFromDataUrl(dataUrl) {
 
 function trackKey(state) {
   return `${state.title}\x00${state.artist}\x00${state.album}\x00${state.trackNumber ?? 0}`;
+}
+
+/** @type {string | null} */
+let lastDisplayedTrackKey = null;
+/** @type {'forward' | 'reverse'} */
+let pendingTrackDirection = 'forward';
+let metaAnimating = false;
+let metaTransitionToken = 0;
+const META_TRANSITION_MS = 340;
+
+/**
+ * @param {import('../types').MediaState} state
+ */
+function getTrackTitleText(state) {
+  return state.title || 'Not playing';
+}
+
+/**
+ * @param {import('../types').MediaState} state
+ */
+function getTrackArtistText(state) {
+  return state.active
+    ? (state.artist || '').replace(/\s[–—]\s/g, ' - ')
+    : 'Open Apple Music to begin';
+}
+
+/**
+ * @param {string} titleText
+ * @param {string} artistText
+ */
+function setTrackMetaStatic(titleText, artistText) {
+  metaTransitionToken += 1;
+  metaAnimating = false;
+  const titleSlot = document.querySelector('.track__title-slot');
+  const artistSlot = document.querySelector('.track__artist-slot');
+  if (!titleSlot || !artistSlot) return;
+
+  titleSlot.replaceChildren();
+  artistSlot.replaceChildren();
+
+  const titleEl = document.createElement('p');
+  titleEl.id = 'track-title';
+  titleEl.className = 'track__title';
+  titleEl.textContent = titleText;
+
+  const artistEl = document.createElement('p');
+  artistEl.id = 'track-artist';
+  artistEl.className = 'track__artist';
+  artistEl.textContent = artistText;
+
+  titleSlot.appendChild(titleEl);
+  artistSlot.appendChild(artistEl);
+  trackTitle = titleEl;
+  trackArtist = artistEl;
+}
+
+/**
+ * @param {HTMLElement} slot
+ * @param {string} text
+ * @param {'track__title' | 'track__artist'} typeClass
+ * @param {boolean} forward
+ */
+function animateMetaSlot(slot, text, typeClass, forward) {
+  const outMod = forward ? 'is-outgoing-forward' : 'is-outgoing-reverse';
+  const inMod = forward ? 'is-incoming-forward' : 'is-incoming-reverse';
+  const existing = slot.querySelector('p');
+
+  if (existing) {
+    existing.removeAttribute('id');
+    existing.classList.add('track__meta-layer', outMod);
+    existing.style.willChange = 'transform, opacity';
+  }
+
+  const incoming = document.createElement('p');
+  incoming.className = `${typeClass} track__meta-layer ${inMod}`;
+  incoming.textContent = text;
+  incoming.style.willChange = 'transform, opacity';
+  slot.appendChild(incoming);
+
+  void incoming.offsetWidth;
+  if (existing) existing.classList.add('is-active');
+  incoming.classList.add('is-active');
+  return incoming;
+}
+
+/**
+ * @param {string} titleText
+ * @param {string} artistText
+ * @param {'forward' | 'reverse'} direction
+ */
+function runTrackMetaTransition(titleText, artistText, direction) {
+  const titleSlot = document.querySelector('.track__title-slot');
+  const artistSlot = document.querySelector('.track__artist-slot');
+  if (!titleSlot || !artistSlot) {
+    setTrackMetaStatic(titleText, artistText);
+    return;
+  }
+
+  const forward = direction === 'forward';
+  const token = ++metaTransitionToken;
+  metaAnimating = true;
+  const titleIncoming = animateMetaSlot(titleSlot, titleText, 'track__title', forward);
+  const artistIncoming = animateMetaSlot(artistSlot, artistText, 'track__artist', forward);
+
+  setTimeout(() => {
+    if (token !== metaTransitionToken) return;
+    for (const el of titleSlot.querySelectorAll('p')) {
+      if (el !== titleIncoming) el.remove();
+    }
+    for (const el of artistSlot.querySelectorAll('p')) {
+      if (el !== artistIncoming) el.remove();
+    }
+
+    for (const el of [titleIncoming, artistIncoming]) {
+      el.classList.remove(
+        'track__meta-layer',
+        'is-incoming-forward',
+        'is-incoming-reverse',
+        'is-active',
+      );
+      el.style.willChange = '';
+    }
+
+    titleIncoming.id = 'track-title';
+    artistIncoming.id = 'track-artist';
+    trackTitle = titleIncoming;
+    trackArtist = artistIncoming;
+    metaAnimating = false;
+
+    if (currentState && trackKey(currentState) !== lastDisplayedTrackKey) {
+      updateTrackMeta(currentState);
+    }
+  }, META_TRANSITION_MS);
+}
+
+/**
+ * @param {import('../types').MediaState} state
+ */
+function updateTrackMeta(state) {
+  const titleText = getTrackTitleText(state);
+  const artistText = getTrackArtistText(state);
+  const tk = trackKey(state);
+
+  if (!state.active) {
+    lastDisplayedTrackKey = tk;
+    setTrackMetaStatic(titleText, artistText);
+    return;
+  }
+
+  if (lastDisplayedTrackKey === null) {
+    lastDisplayedTrackKey = tk;
+    setTrackMetaStatic(titleText, artistText);
+    return;
+  }
+
+  if (tk === lastDisplayedTrackKey) return;
+
+  if (metaAnimating) return;
+
+  const direction = pendingTrackDirection;
+  pendingTrackDirection = 'forward';
+  lastDisplayedTrackKey = tk;
+  runTrackMetaTransition(titleText, artistText, direction);
 }
 
 function applyThemePalettes(bendsPalette, linesGradient) {
@@ -130,11 +295,152 @@ function sampleAndApply(img) {
 function applyAlbumArtUrl(dataUrl) {
   if (!dataUrl) return;
   lastAlbumArtUrl = dataUrl;
-  if (currentArtUrl !== dataUrl) {
-    currentArtUrl = dataUrl;
-    albumArt.src = dataUrl;
-  }
+  updateAlbumArtImage(dataUrl);
   extractPaletteFromDataUrl(dataUrl);
+}
+
+/**
+ * @param {HTMLImageElement} img
+ */
+function bindAlbumArtOnload(img) {
+  img.onload = () => sampleAndApply(img);
+}
+
+/**
+ * @param {string} dataUrl
+ */
+function setAlbumArtStatic(dataUrl) {
+  artTransitionToken += 1;
+  artAnimating = false;
+  const wrap = document.querySelector('.track__art-wrap');
+  let img = document.getElementById('album-art');
+
+  if (wrap) {
+    for (const layer of wrap.querySelectorAll('.track__art-layer')) {
+      if (layer !== img) layer.remove();
+    }
+  }
+
+  if (!img && wrap) {
+    const placeholder = document.getElementById('album-art-placeholder');
+    img = document.createElement('img');
+    img.id = 'album-art';
+    img.className = 'track__art';
+    img.alt = '';
+    wrap.insertBefore(img, placeholder ?? null);
+  }
+
+  if (!img) return;
+
+  img.classList.remove('track__art-layer', 'is-outgoing-fade', 'is-incoming-fade', 'is-active');
+  img.style.willChange = '';
+  img.hidden = false;
+  displayedArtUrl = dataUrl;
+  currentArtUrl = dataUrl;
+  if (img.src !== dataUrl) img.src = dataUrl;
+  albumArt = img;
+  bindAlbumArtOnload(img);
+}
+
+/**
+ * @param {string} dataUrl
+ */
+function runAlbumArtFade(dataUrl) {
+  const wrap = document.querySelector('.track__art-wrap');
+  const outgoing = albumArt ?? document.getElementById('album-art');
+  if (!wrap || !outgoing) {
+    setAlbumArtStatic(dataUrl);
+    return;
+  }
+
+  const token = ++artTransitionToken;
+  artAnimating = true;
+  displayedArtUrl = dataUrl;
+
+  outgoing.removeAttribute('id');
+  outgoing.classList.add('track__art-layer', 'is-outgoing-fade');
+  outgoing.style.willChange = 'opacity';
+
+  const incoming = document.createElement('img');
+  incoming.className = 'track__art track__art-layer is-incoming-fade';
+  incoming.alt = '';
+  incoming.style.willChange = 'opacity';
+
+  const placeholder = document.getElementById('album-art-placeholder');
+  wrap.insertBefore(incoming, placeholder ?? null);
+
+  const startFade = () => {
+    if (token !== artTransitionToken) return;
+    void incoming.offsetWidth;
+    outgoing.classList.add('is-active');
+    incoming.classList.add('is-active');
+  };
+
+  incoming.onload = () => startFade();
+  incoming.src = dataUrl;
+  if (incoming.complete) startFade();
+
+  setTimeout(() => {
+    if (token !== artTransitionToken) return;
+    outgoing.remove();
+    incoming.classList.remove('track__art-layer', 'is-incoming-fade', 'is-active');
+    incoming.style.willChange = '';
+    incoming.id = 'album-art';
+    albumArt = incoming;
+    bindAlbumArtOnload(incoming);
+    artAnimating = false;
+    currentArtUrl = dataUrl;
+
+    const pending = currentState?.albumArt;
+    if (pending && pending !== dataUrl) {
+      updateAlbumArtImage(pending);
+    }
+  }, ART_FADE_MS);
+}
+
+/**
+ * @param {string} dataUrl
+ */
+function updateAlbumArtImage(dataUrl) {
+  if (!dataUrl) return;
+
+  const img = albumArt ?? document.getElementById('album-art');
+  const hasDisplayedArt = displayedArtUrl != null && img && !img.hidden;
+
+  if (!hasDisplayedArt) {
+    setAlbumArtStatic(dataUrl);
+    return;
+  }
+
+  if (dataUrl === displayedArtUrl) return;
+  if (artAnimating) return;
+
+  runAlbumArtFade(dataUrl);
+}
+
+function clearAlbumArtDisplay() {
+  artTransitionToken += 1;
+  artAnimating = false;
+  displayedArtUrl = null;
+  currentArtUrl = null;
+
+  const wrap = document.querySelector('.track__art-wrap');
+  if (wrap) {
+    for (const layer of wrap.querySelectorAll('.track__art-layer')) {
+      layer.remove();
+    }
+  }
+
+  const img = document.getElementById('album-art');
+  if (img) {
+    img.removeAttribute('src');
+    img.hidden = true;
+    img.classList.remove('track__art-layer', 'is-outgoing-fade', 'is-incoming-fade', 'is-active');
+    img.style.willChange = '';
+    albumArt = img;
+  }
+
+  if (albumArtPlaceholder) albumArtPlaceholder.hidden = false;
 }
 
 /**
@@ -147,13 +453,7 @@ function updatePaletteFromState(state) {
   }
 
   lastAlbumArtUrl = state.albumArt;
-
-  if (currentArtUrl !== state.albumArt) {
-    currentArtUrl = state.albumArt;
-    albumArt.src = state.albumArt;
-  }
-
-  // ponytail: img load doesn't fire when src is unchanged; always sample from a fresh Image
+  updateAlbumArtImage(state.albumArt);
   extractPaletteFromDataUrl(state.albumArt);
 }
 
@@ -215,6 +515,11 @@ let lastAlbumArtUrl = null;
 let lastSeenTrackKey = '';
 /** @type {string | null} */
 let currentArtUrl = null;
+/** @type {string | null} */
+let displayedArtUrl = null;
+let artAnimating = false;
+let artTransitionToken = 0;
+const ART_FADE_MS = 340;
 let paletteLoadToken = 0;
 
 /** @type {ReturnType<import('./color-bends.js').createColorBends> | null} */
@@ -527,14 +832,10 @@ function renderState(state) {
 
   if (!trackTitle || !trackArtist || !albumArt || !albumArtPlaceholder) return;
 
-  trackTitle.textContent = state.title || 'Not playing';
-  trackArtist.textContent = state.active
-    ? (state.artist || '').replace(/\s[–—]\s/g, ' - ')
-    : 'Open Apple Music to begin';
+  updateTrackMeta(state);
 
   if (state.albumArt) {
-    albumArt.hidden = false;
-    albumArtPlaceholder.hidden = true;
+    if (albumArtPlaceholder) albumArtPlaceholder.hidden = true;
 
     const tk = trackKey(state);
     if (tk !== lastSeenTrackKey) {
@@ -545,9 +846,7 @@ function renderState(state) {
 
     updatePaletteFromState(state);
   } else {
-    albumArt.removeAttribute('src');
-    albumArt.hidden = true;
-    albumArtPlaceholder.hidden = false;
+    clearAlbumArtDisplay();
     clearAlbumColors();
   }
 
@@ -587,6 +886,7 @@ function handleControl(action) {
     currentState = { ...currentState, repeatMode: cycle[currentState.repeatMode] || 'off' };
     renderPlaybackToggles();
   } else if (action === 'next' || action === 'previous') {
+    pendingTrackDirection = action === 'next' ? 'forward' : 'reverse';
     currentArtUrl = null;
     scheduleColorRefresh();
   }
@@ -618,6 +918,32 @@ function endVolumeDrag(event) {
   });
 }
 
+function bindVolumeSlider() {
+  if (!volumeSlider || volumeSlider === volumeSliderBound) return;
+  volumeSliderBound = volumeSlider;
+
+  volumeSlider.addEventListener('pointerdown', (event) => {
+    volumeDragging = true;
+    volumeSlider.setPointerCapture(event.pointerId);
+  });
+
+  volumeSlider.addEventListener('input', () => {
+    const value = Number(volumeSlider.value);
+    btnMute?.classList.toggle('is-muted', value === 0);
+    if (value === lastVolumeSent) return;
+    lastVolumeSent = value;
+    window.musicController.setVolumeLive(value);
+  });
+
+  volumeSlider.addEventListener('pointerup', endVolumeDrag);
+  volumeSlider.addEventListener('pointercancel', endVolumeDrag);
+
+  volumeSlider.addEventListener('change', () => {
+    if (volumeDragging || volumeSyncPending) return;
+    void syncVolumeFromSlider();
+  });
+}
+
 function bindDomRefs() {
   albumArt = document.getElementById('album-art');
   albumArtPlaceholder = document.getElementById('album-art-placeholder');
@@ -636,8 +962,11 @@ function bindDomRefs() {
   btnVolUp = document.getElementById('btn-vol-up');
   btnMute = document.getElementById('btn-mute');
   volumeSlider = document.getElementById('volume-slider');
-  if (albumArt) {
-    albumArt.onload = () => sampleAndApply(albumArt);
+  bindVolumeSlider();
+  const artEl = document.getElementById('album-art');
+  if (artEl) {
+    albumArt = artEl;
+    bindAlbumArtOnload(artEl);
   }
 }
 
@@ -720,36 +1049,6 @@ export function initRenderer(controllerRef) {
       default:
         break;
     }
-  });
-
-  popover.addEventListener('pointerdown', (event) => {
-    if (event.target?.id === 'volume-slider') {
-      volumeDragging = true;
-      event.target.setPointerCapture(event.pointerId);
-    }
-  });
-
-  popover.addEventListener('input', (event) => {
-    if (event.target?.id !== 'volume-slider' || !btnMute) return;
-    const value = Number(event.target.value);
-    btnMute.classList.toggle('is-muted', value === 0);
-    if (value === lastVolumeSent) return;
-    lastVolumeSent = value;
-    window.musicController.setVolumeLive(value);
-  });
-
-  popover.addEventListener('pointerup', (event) => {
-    if (event.target?.id === 'volume-slider') endVolumeDrag(event);
-  });
-
-  popover.addEventListener('pointercancel', (event) => {
-    if (event.target?.id === 'volume-slider') endVolumeDrag(event);
-  });
-
-  popover.addEventListener('change', (event) => {
-    if (event.target?.id !== 'volume-slider') return;
-    if (volumeDragging || volumeSyncPending) return;
-    void syncVolumeFromSlider();
   });
 
   window.musicController.onLayout(({ card }) => {

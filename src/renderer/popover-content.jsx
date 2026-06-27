@@ -28,10 +28,14 @@ export function PopoverContent() {
             </div>
           </div>
           <div className="track__meta">
-            <p id="track-title" className="track__title">
-              Not playing
-            </p>
-            <p id="track-artist" className="track__artist" />
+            <div className="track__meta-slot track__title-slot">
+              <p id="track-title" className="track__title">
+                Not playing
+              </p>
+            </div>
+            <div className="track__meta-slot track__artist-slot">
+              <p id="track-artist" className="track__artist" />
+            </div>
           </div>
         </div>
 

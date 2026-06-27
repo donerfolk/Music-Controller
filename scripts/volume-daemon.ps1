@@ -38,7 +38,22 @@ public static class MusicVolume
         catch { return null; }
     }
 
-    static bool WithMusicSession(Func<ISimpleAudioVolume, bool> action)
+    static bool IsMusicProcess(string name)
+    {
+        return IsPreferredProcess(name) || IsFallbackProcess(name);
+    }
+
+    // Active preferred > active fallback > inactive preferred > inactive fallback
+    static int SessionRank(int state, bool preferred)
+    {
+        bool active = state == 1;
+        if (active && preferred) return 3;
+        if (active && !preferred) return 2;
+        if (!active && preferred) return 1;
+        return 0;
+    }
+
+    static bool ForEachMusicSession(Action<ISimpleAudioVolume> action)
     {
         IMMDeviceEnumerator deviceEnumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
         IMMDevice speakers;
@@ -55,9 +70,6 @@ public static class MusicVolume
         sessionEnumerator.GetCount(out count);
 
         bool handled = false;
-        int preferredIndex = -1;
-        int fallbackIndex = -1;
-
         for (int i = 0; i < count; i++)
         {
             IAudioSessionControl ctl;
@@ -68,39 +80,16 @@ public static class MusicVolume
                 uint pid;
                 ctl2.GetProcessId(out pid);
                 string processName = GetProcessName(pid);
-                if (processName == null) continue;
+                if (!IsMusicProcess(processName)) continue;
 
-                if (IsPreferredProcess(processName))
-                {
-                    preferredIndex = i;
-                    break;
-                }
-
-                if (IsFallbackProcess(processName))
-                {
-                    fallbackIndex = i;
-                }
+                handled = true;
+                var vol = (ISimpleAudioVolume)(object)ctl;
+                action(vol);
             }
             catch { }
             finally
             {
                 Marshal.ReleaseComObject(ctl);
-            }
-        }
-
-        int targetIndex = preferredIndex >= 0 ? preferredIndex : fallbackIndex;
-        if (targetIndex >= 0)
-        {
-            IAudioSessionControl targetCtl;
-            sessionEnumerator.GetSession(targetIndex, out targetCtl);
-            try
-            {
-                var vol = (ISimpleAudioVolume)(object)targetCtl;
-                handled = action(vol);
-            }
-            finally
-            {
-                Marshal.ReleaseComObject(targetCtl);
             }
         }
 
@@ -111,64 +100,107 @@ public static class MusicVolume
         return handled;
     }
 
+    static bool TryReadBestSession(out int volumePct, out bool muted)
+    {
+        volumePct = 0;
+        muted = false;
+
+        IMMDeviceEnumerator deviceEnumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+        IMMDevice speakers;
+        deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out speakers);
+
+        Guid IID_IAudioSessionManager2 = typeof(IAudioSessionManager2).GUID;
+        object o;
+        speakers.Activate(ref IID_IAudioSessionManager2, 0, IntPtr.Zero, out o);
+        IAudioSessionManager2 mgr = (IAudioSessionManager2)o;
+
+        IAudioSessionEnumerator sessionEnumerator;
+        mgr.GetSessionEnumerator(out sessionEnumerator);
+        int count;
+        sessionEnumerator.GetCount(out count);
+
+        bool found = false;
+        int bestRank = -1;
+        for (int i = 0; i < count; i++)
+        {
+            IAudioSessionControl ctl;
+            sessionEnumerator.GetSession(i, out ctl);
+            try
+            {
+                var ctl2 = (IAudioSessionControl2)(object)ctl;
+                uint pid;
+                ctl2.GetProcessId(out pid);
+                string processName = GetProcessName(pid);
+                if (!IsMusicProcess(processName)) continue;
+
+                int state;
+                ctl.GetState(out state);
+                int rank = SessionRank(state, IsPreferredProcess(processName));
+                if (rank < bestRank) continue;
+
+                var vol = (ISimpleAudioVolume)(object)ctl;
+                float level;
+                bool isMuted;
+                vol.GetMasterVolume(out level);
+                vol.GetMute(out isMuted);
+
+                bestRank = rank;
+                volumePct = (int)Math.Round(level * 100);
+                muted = isMuted;
+                found = true;
+            }
+            catch { }
+            finally
+            {
+                Marshal.ReleaseComObject(ctl);
+            }
+        }
+
+        Marshal.ReleaseComObject(sessionEnumerator);
+        Marshal.ReleaseComObject(mgr);
+        Marshal.ReleaseComObject(speakers);
+        Marshal.ReleaseComObject(deviceEnumerator);
+        return found;
+    }
+
     public static string GetStateJson()
     {
-        string json = "{\"volume\":0,\"muted\":false,\"available\":false}";
-        WithMusicSession(vol =>
-        {
-            float level;
-            bool muted;
-            vol.GetMasterVolume(out level);
-            vol.GetMute(out muted);
-            int pct = (int)Math.Round(level * 100);
-            json = "{\"volume\":" + pct + ",\"muted\":" + (muted ? "true" : "false") + ",\"available\":true}";
-            return true;
-        });
-        return json;
+        int pct;
+        bool muted;
+        if (!TryReadBestSession(out pct, out muted))
+            return "{\"volume\":0,\"muted\":false,\"available\":false}";
+        return "{\"volume\":" + pct + ",\"muted\":" + (muted ? "true" : "false") + ",\"available\":true}";
     }
 
     public static void SetVolume(int level)
     {
-        WithMusicSession(vol =>
+        int clamped = Math.Max(0, Math.Min(100, level));
+        Guid guid = Guid.Empty;
+        ForEachMusicSession(vol =>
         {
-            int clamped = Math.Max(0, Math.Min(100, level));
-            Guid guid = Guid.Empty;
             vol.SetMasterVolume(clamped / 100f, ref guid);
             if (clamped > 0) vol.SetMute(false, ref guid);
-            return true;
         });
     }
 
     public static void SetMuted(bool muted)
     {
-        WithMusicSession(vol =>
-        {
-            Guid guid = Guid.Empty;
-            vol.SetMute(muted, ref guid);
-            return true;
-        });
+        Guid guid = Guid.Empty;
+        ForEachMusicSession(vol => vol.SetMute(muted, ref guid));
     }
 
     public static void Adjust(int delta)
     {
-        WithMusicSession(vol =>
+        int currentPct;
+        bool wasMuted;
+        if (!TryReadBestSession(out currentPct, out wasMuted)) return;
+
+        int clamped = Math.Max(0, Math.Min(100, currentPct + delta));
+        Guid guid = Guid.Empty;
+        ForEachMusicSession(vol =>
         {
-            float level;
-            bool muted;
-            vol.GetMasterVolume(out level);
-            vol.GetMute(out muted);
-
-            if (muted && delta > 0)
-            {
-                Guid guid = Guid.Empty;
-                vol.SetMute(false, ref guid);
-            }
-
-            int next = (int)Math.Round(level * 100) + delta;
-            int clamped = Math.Max(0, Math.Min(100, next));
-            Guid ctx = Guid.Empty;
-            vol.SetMasterVolume(clamped / 100f, ref ctx);
-            return true;
+            if (wasMuted && delta > 0) vol.SetMute(false, ref guid);
+            vol.SetMasterVolume(clamped / 100f, ref guid);
         });
     }
 }
