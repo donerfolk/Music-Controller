@@ -104,7 +104,16 @@ function getSession() {
  */
 function control(action, onComplete) {
   if (action === 'shuffle' || action === 'repeat') {
-    worker?.postMessage({ type: 'invalidate-toggles' });
+    worker?.postMessage({ type: 'optimistic-toggle', action });
+    mediaControl.send(action, (code) => {
+      if (code === 0) {
+        worker?.postMessage({ type: 'invalidate-toggles' });
+      } else {
+        worker?.postMessage({ type: 'revert-toggle', action });
+      }
+      onComplete?.();
+    });
+    return;
   }
   mediaControl.send(action, onComplete);
 }

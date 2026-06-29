@@ -16,6 +16,7 @@ const TOGGLE_QUERY_MS = 3000;
 let cachedToggles = null;
 let cachedTogglesAt = 0;
 let togglesStale = true;
+let togglesQueryBlockedUntil = 0;
 
 const PlaybackStatus = {
   Closed: 0,
@@ -60,7 +61,8 @@ function applyApplePlaybackToggles(state) {
 
   const now = Date.now();
   const cacheFresh = cachedToggles && !togglesStale && now - cachedTogglesAt < TOGGLE_QUERY_MS;
-  if (!cacheFresh) {
+  const queryBlocked = now < togglesQueryBlockedUntil;
+  if (!cacheFresh && !queryBlocked) {
     const toggles = queryApplePlaybackState();
     if (toggles) {
       cachedToggles = toggles;
@@ -157,10 +159,61 @@ for (const event of [
   monitor.on(event, scheduleEmit);
 }
 
-parentPort.on('message', (msg) => {
-  if (msg?.type === 'invalidate-toggles') {
-    togglesStale = true;
+function flipCachedToggle(action) {
+  if (!cachedToggles) cachedToggles = { shuffleActive: false, repeatMode: 'off' };
+  if (action === 'shuffle') {
+    cachedToggles = { ...cachedToggles, shuffleActive: !cachedToggles.shuffleActive };
+  } else if (action === 'repeat') {
+    const cycle = { off: 'all', all: 'one', one: 'off' };
+    cachedToggles = { ...cachedToggles, repeatMode: cycle[cachedToggles.repeatMode] || 'off' };
+  }
+  cachedTogglesAt = Date.now();
+}
+
+function refreshTogglesFromApple() {
+  togglesQueryBlockedUntil = 0;
+  togglesStale = true;
+  const toggles = queryApplePlaybackState();
+  if (toggles) {
+    cachedToggles = toggles;
+    cachedTogglesAt = Date.now();
+    togglesStale = false;
+  }
+}
+
+let toggleRefreshTimer = null;
+
+function scheduleToggleRefresh() {
+  clearTimeout(toggleRefreshTimer);
+  togglesStale = true;
+  togglesQueryBlockedUntil = Date.now() + 2500;
+  emitState();
+  // ponytail: query UIA while Apple Music is still settling shuffle-off crashes the app
+  toggleRefreshTimer = setTimeout(() => {
+    toggleRefreshTimer = null;
+    refreshTogglesFromApple();
     emitState();
+  }, 2000);
+}
+
+parentPort.on('message', (msg) => {
+  if (msg?.type === 'optimistic-toggle') {
+    flipCachedToggle(msg.action);
+    togglesStale = true;
+    // Block polls from querying while the toggle script holds the UIA mutex
+    togglesQueryBlockedUntil = Date.now() + 60000;
+    emitState();
+    return;
+  }
+  if (msg?.type === 'revert-toggle') {
+    flipCachedToggle(msg.action);
+    togglesStale = true;
+    togglesQueryBlockedUntil = 0;
+    emitState();
+    return;
+  }
+  if (msg?.type === 'invalidate-toggles') {
+    scheduleToggleRefresh();
     return;
   }
   if (msg?.type === 'poll') emitState();

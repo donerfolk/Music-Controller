@@ -49,6 +49,12 @@ let volumeSliderBound = null;
 
 /** @type {import('../types').MediaState | null} */
 let currentState = null;
+/** @type {boolean | null} */
+let pendingShuffle = null;
+/** @type {string | null} */
+let pendingRepeat = null;
+let pendingToggleStartedAt = 0;
+const PENDING_TOGGLE_MS = 2000;
 let volumeDragging = false;
 let volumeSyncPending = false;
 let lastVolumeSent = -1;
@@ -856,6 +862,18 @@ function renderPlaybackToggles() {
  * @param {import('../types').MediaState} state
  */
 function renderState(state) {
+  const pendingFresh = Date.now() - pendingToggleStartedAt < PENDING_TOGGLE_MS;
+  if (pendingFresh) {
+    if (pendingShuffle !== null) state = { ...state, shuffleActive: pendingShuffle };
+    if (pendingRepeat !== null) state = { ...state, repeatMode: pendingRepeat };
+  } else {
+    pendingShuffle = null;
+    pendingRepeat = null;
+  }
+
+  if (pendingShuffle !== null && state.shuffleActive === pendingShuffle) pendingShuffle = null;
+  if (pendingRepeat !== null && state.repeatMode === pendingRepeat) pendingRepeat = null;
+
   currentState = state;
   bindDomRefs();
 
@@ -908,11 +926,17 @@ function handleControl(action) {
   if (action === 'toggle') {
     updatePlayButton(!currentState.isPlaying);
   } else if (action === 'shuffle') {
-    currentState = { ...currentState, shuffleActive: !currentState.shuffleActive };
+    const next = !currentState.shuffleActive;
+    currentState = { ...currentState, shuffleActive: next };
+    pendingShuffle = next;
+    pendingToggleStartedAt = Date.now();
     renderPlaybackToggles();
   } else if (action === 'repeat') {
     const cycle = { off: 'all', all: 'one', one: 'off' };
-    currentState = { ...currentState, repeatMode: cycle[currentState.repeatMode] || 'off' };
+    const next = cycle[currentState.repeatMode] || 'off';
+    currentState = { ...currentState, repeatMode: next };
+    pendingRepeat = next;
+    pendingToggleStartedAt = Date.now();
     renderPlaybackToggles();
   } else if (action === 'next' || action === 'previous') {
     pendingTrackDirection = action === 'next' ? 'forward' : 'reverse';

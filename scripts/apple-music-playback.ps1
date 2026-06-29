@@ -10,33 +10,25 @@ param(
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 
+# ponytail: one UIA session at a time — concurrent query + toggle crashes Apple Music
+$mutex = New-Object System.Threading.Mutex($false, 'Global\WaveAppleMusicUIA')
+if (-not $mutex.WaitOne(30000)) {
+    [Console]::Error.WriteLine('[apple-music-playback] busy')
+    exit 1
+}
+
+try {
+
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public struct POINT { public int X; public int Y; }
-public struct RECT { public int Left, Top, Right, Bottom; }
-[StructLayout(LayoutKind.Sequential)]
-public struct WINDOWPLACEMENT {
-    public int length;
-    public int flags;
-    public int showCmd;
-    public POINT ptMinPosition;
-    public POINT ptMaxPosition;
-    public RECT rcNormalPosition;
-}
 public class MusicWin32 {
+    public const int SW_SHOWNOACTIVATE = 4;
     public const int SW_MINIMIZE = 6;
-    public const uint SWP_NOSIZE = 0x0001;
-    public const uint SWP_NOACTIVATE = 0x0010;
-    public const uint SWP_NOZORDER = 0x0004;
-    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    public const int DWMWA_CLOAK = 13;
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
-    [DllImport("user32.dll")] public static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
-    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr zero);
-    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
+    [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int val, int sz);
 }
 "@
 
@@ -44,24 +36,8 @@ function Get-AppleMusicProcess {
     return Get-Process -Name 'AppleMusic', 'Music' -ErrorAction SilentlyContinue | Select-Object -First 1
 }
 
-function Restore-ForegroundWindow([IntPtr]$hwnd) {
-    if ($hwnd -eq [IntPtr]::Zero) { return }
-
-    $fg = [MusicWin32]::GetForegroundWindow()
-    if ($fg -eq $hwnd) { return }
-
-    $fgThread = [MusicWin32]::GetWindowThreadProcessId($fg, [IntPtr]::Zero)
-    $targetThread = [MusicWin32]::GetWindowThreadProcessId($hwnd, [IntPtr]::Zero)
-    $attached = $false
-    if ($fgThread -ne $targetThread) {
-        $attached = [MusicWin32]::AttachThreadInput($fgThread, $targetThread, $true)
-    }
-
-    [void][MusicWin32]::SetForegroundWindow($hwnd)
-
-    if ($attached) {
-        [void][MusicWin32]::AttachThreadInput($fgThread, $targetThread, $false)
-    }
+function Set-Cloak([IntPtr]$hwnd, [int]$on) {
+    [void][MusicWin32]::DwmSetWindowAttribute($hwnd, [MusicWin32]::DWMWA_CLOAK, [ref]$on, 4)
 }
 
 function Invoke-WithoutWindowFlash([scriptblock]$Action) {
@@ -73,24 +49,24 @@ function Invoke-WithoutWindowFlash([scriptblock]$Action) {
 
     $hwnd = $proc.MainWindowHandle
     $wasMinimized = [MusicWin32]::IsIconic($hwnd)
-    $prevForeground = [MusicWin32]::GetForegroundWindow()
-    $wasForeground = ($prevForeground -eq $hwnd)
 
-    $placement = New-Object WINDOWPLACEMENT
-    $placement.length = [System.Runtime.InteropServices.Marshal]::SizeOf($placement)
-    [void][MusicWin32]::GetWindowPlacement($hwnd, [ref]$placement)
+    # ponytail: UIA Toggle() needs the window realized (non-minimized), which makes it surface
+    # on screen. DWM cloaking (what UWP uses internally) keeps it rendered+UIA-interactive but
+    # fully invisible — no flash, no foreground steal. finally always uncloaks so a mid-run
+    # failure can't strand Apple Music invisible.
+    if (-not $wasMinimized) {
+        & $Action
+        return
+    }
 
-    # ponytail: UIA Toggle() restores the window; move off-screen first so nothing flashes on screen
-    $posFlags = [MusicWin32]::SWP_NOSIZE -bor [MusicWin32]::SWP_NOACTIVATE -bor [MusicWin32]::SWP_NOZORDER
-    [void][MusicWin32]::SetWindowPos($hwnd, [IntPtr]::Zero, -32000, -32000, 0, 0, $posFlags)
-
+    Set-Cloak $hwnd 1
+    [void][MusicWin32]::ShowWindow($hwnd, [MusicWin32]::SW_SHOWNOACTIVATE)
     try {
         & $Action
+        Start-Sleep -Milliseconds 400
     } finally {
-        [void][MusicWin32]::SetWindowPlacement($hwnd, [ref]$placement)
-        if (-not $wasForeground -and -not $wasMinimized) {
-            Restore-ForegroundWindow $prevForeground
-        }
+        [void][MusicWin32]::ShowWindow($hwnd, [MusicWin32]::SW_MINIMIZE)
+        Set-Cloak $hwnd 0
     }
 }
 
@@ -201,4 +177,9 @@ switch ($Action) {
         $state = Get-PlaybackState
         $state | ConvertTo-Json -Compress
     }
+}
+
+} finally {
+    $mutex.ReleaseMutex()
+    $mutex.Dispose()
 }

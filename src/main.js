@@ -392,7 +392,7 @@ function setupIpc() {
       for (const ms of [200, 500, 1000, 1800, 3000]) {
         setTimeout(nudgeForceRefresh, ms);
       }
-    } else {
+    } else if (!isPlaybackToggle) {
       nudgeSessionRefresh();
       setTimeout(nudgeSessionRefresh, 300);
       setTimeout(nudgeSessionRefresh, 900);

@@ -63,7 +63,7 @@ function send(action, onComplete) {
     child.stderr?.on('data', (data) => {
       console.error('[apple-music-playback]', data.toString().trim());
     });
-    child.on('close', () => onComplete?.());
+    child.on('close', (code) => onComplete?.(code ?? 1));
     return;
   }
   write(action);
