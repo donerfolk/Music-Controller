@@ -272,10 +272,11 @@ function applySampleToUi(sample) {
   const accentFull = vibrantize(full);
   const accentLeft = vibrantize(left);
   const accentRight = vibrantize(right);
+  const accentVisible = ensureMinBrightness(accentFull);
 
   setAccentVars({
-    accent: `rgb(${accentFull.r}, ${accentFull.g}, ${accentFull.b})`,
-    glow: `rgba(${accentFull.r}, ${accentFull.g}, ${accentFull.b}, 0.45)`,
+    accent: `rgb(${accentVisible.r}, ${accentVisible.g}, ${accentVisible.b})`,
+    glow: `rgba(${accentVisible.r}, ${accentVisible.g}, ${accentVisible.b}, 0.45)`,
     ambient1: `rgba(${accentLeft.r}, ${accentLeft.g}, ${accentLeft.b}, 0.38)`,
     ambient2: `rgba(${accentRight.r}, ${accentRight.g}, ${accentRight.b}, 0.34)`,
     ambientBase: `rgba(${accentFull.r}, ${accentFull.g}, ${accentFull.b}, 0.28)`,
@@ -546,6 +547,20 @@ function vibrantize({ r, g, b }, boost = 1.12) {
     r: Math.min(255, Math.round(avg + (r - avg) * boost)),
     g: Math.min(255, Math.round(avg + (g - avg) * boost)),
     b: Math.min(255, Math.round(avg + (b - avg) * boost)),
+  };
+}
+
+// Lift dark accents so the active control ring/symbol stay visible.
+// No-op when the color is already bright (light covers unchanged).
+function ensureMinBrightness({ r, g, b }, minPeak = 180) {
+  const peak = Math.max(r, g, b);
+  if (peak >= minPeak) return { r, g, b };
+  if (peak === 0) return { r: minPeak, g: minPeak, b: minPeak };
+  const scale = minPeak / peak;
+  return {
+    r: Math.round(r * scale),
+    g: Math.round(g * scale),
+    b: Math.round(b * scale),
   };
 }
 
