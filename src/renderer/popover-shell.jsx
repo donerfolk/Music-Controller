@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PopoverContent } from './popover-content.jsx';
 
-const POPOVER_TRANSITION = { duration: 0.35, ease: 'ease' };
+const POPOVER_TRANSITION = { duration: 0.22, ease: 'ease' };
 
 const POPOVER_VARIANTS = {
   hidden: {

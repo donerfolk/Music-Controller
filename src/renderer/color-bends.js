@@ -223,7 +223,9 @@ export function createColorBends(container, opts = {}) {
     renderer.render(scene, camera);
     raf = requestAnimationFrame(loop);
   };
-  raf = requestAnimationFrame(loop);
+  const startLoop = () => { if (!raf) raf = requestAnimationFrame(loop); };
+  const stopLoop = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } };
+  startLoop();
 
   return {
     updateColors(colors) {
@@ -238,13 +240,27 @@ export function createColorBends(container, opts = {}) {
     setRotation(deg) {
       rotation = deg;
     },
+    attachTo(newContainer) {
+      if (!newContainer) return;
+      if (newContainer === container) { resize(); return; }
+      newContainer.replaceChildren(renderer.domElement);
+      if (ro) { ro.disconnect(); ro.observe(newContainer); }
+      container.removeEventListener('pointermove', onPointerMove);
+      newContainer.addEventListener('pointermove', onPointerMove);
+      container = newContainer;
+      resize();
+    },
+    pause() { stopLoop(); },
+    resume() { startLoop(); },
     destroy() {
-      cancelAnimationFrame(raf);
+      stopLoop();
       container.removeEventListener('pointermove', onPointerMove);
       if (ro) ro.disconnect();
       else window.removeEventListener('resize', resize);
       renderer.dispose();
       material.dispose();
+      // ponytail: release the underlying WebGL context — see floating-lines.js.
+      renderer.forceContextLoss();
       if (renderer.domElement.parentElement === container) {
         container.removeChild(renderer.domElement);
       }

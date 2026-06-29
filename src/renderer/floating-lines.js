@@ -334,7 +334,9 @@ export function createFloatingLines(container, opts = {}) {
     renderer.render(scene, camera);
     raf = requestAnimationFrame(loop);
   };
-  raf = requestAnimationFrame(loop);
+  const startLoop = () => { if (!raf) raf = requestAnimationFrame(loop); };
+  const stopLoop = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } };
+  startLoop();
 
   return {
     updateGradient(colors) {
@@ -346,8 +348,18 @@ export function createFloatingLines(container, opts = {}) {
     resize() {
       resize();
     },
+    attachTo(newContainer) {
+      if (!newContainer) return;
+      if (newContainer === container) { resize(); return; }
+      newContainer.replaceChildren(renderer.domElement);
+      if (ro) { ro.disconnect(); ro.observe(newContainer); }
+      container = newContainer;
+      resize();
+    },
+    pause() { stopLoop(); },
+    resume() { startLoop(); },
     destroy() {
-      cancelAnimationFrame(raf);
+      stopLoop();
       if (ro) ro.disconnect();
       else window.removeEventListener('resize', resize);
       if (config.interactive) {
@@ -357,6 +369,9 @@ export function createFloatingLines(container, opts = {}) {
       geometry.dispose();
       material.dispose();
       renderer.dispose();
+      // ponytail: release the underlying WebGL context — dispose() alone keeps it
+      // alive. Only used on theme switch; the close path pauses instead.
+      renderer.forceContextLoss();
       if (renderer.domElement.parentElement === container) {
         container.removeChild(renderer.domElement);
       }

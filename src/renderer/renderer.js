@@ -637,6 +637,8 @@ function stopAlbumBlurDrift() {
 
 async function ensureColorBends() {
   if (colorBends) {
+    colorBends.attachTo(colorBendsMount);
+    colorBends.resume();
     colorBends.resize();
     return colorBends;
   }
@@ -678,6 +680,8 @@ function destroyColorBends() {
 
 async function ensureFloatingLines() {
   if (floatingLines) {
+    floatingLines.attachTo(floatingLinesMount);
+    floatingLines.resume();
     floatingLines.resize();
     return floatingLines;
   }
@@ -752,6 +756,16 @@ function applyAlbumBlurBackground(dataUrl) {
 function stopBackgroundEffects() {
   destroyColorBends();
   destroyFloatingLines();
+  stopAlbumBlurDrift();
+}
+
+// ponytail: close path pauses (keeps the WebGL context + canvas alive) instead of
+// destroying, so reopening re-attaches the existing canvas instead of creating a
+// new context every time — that churn intermittently exhausted the browser's
+// context limit and left the theme blank after close/reopen.
+function pauseBackgroundEffects() {
+  colorBends?.pause?.();
+  floatingLines?.pause?.();
   stopAlbumBlurDrift();
 }
 
@@ -987,7 +1001,7 @@ export function initRenderer(controllerRef) {
   const popover = document.getElementById('popover');
 
   controllerRef.current.onEnterComplete = () => syncBackground();
-  controllerRef.current.onExitStart = () => stopBackgroundEffects();
+  controllerRef.current.onExitStart = () => pauseBackgroundEffects();
 
   window.musicController.onUpdate((state) => renderState(state));
   window.musicController.onArtUpdate((dataUrl) => applyAlbumArtUrl(dataUrl));
@@ -1060,6 +1074,13 @@ export function initRenderer(controllerRef) {
     ignoreOutsideUntil = Date.now() + 350;
     animationControllerRef.current.open();
     bindDomRefs();
+    // The persistent window reuses this module state across opens, but React
+    // just remounted the content with default text/art. Reset the de-dupe
+    // flags so renderState/applyAlbumArtUrl repopulate the fresh DOM.
+    lastDisplayedTrackKey = null;
+    displayedArtUrl = null;
+    if (currentState) renderState(currentState);
+    if (currentArtUrl) applyAlbumArtUrl(currentArtUrl);
     try {
       applyTheme(await window.musicController.getTheme(), { sync: false });
     } catch {

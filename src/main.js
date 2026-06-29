@@ -16,7 +16,11 @@ const POPOVER_INSET = 40;
 const POLL_INTERVAL_MS = 1000;
 const CLOSE_TIMEOUT_MS = 400;
 const BLUR_GUARD_MS = 600;
-const PLAYBACK_BLUR_GUARD_MS = 12000;
+// ponytail: was 12s, which locked out outside-close for the whole track-change
+// refresh window. 800ms survives the skip command's transient focus shift
+// (refocusPopover re-grabs focus right after); the scheduled refreshes at
+// 200/500/1000/1800/3000ms only re-broadcast state, they don't need the guard.
+const PLAYBACK_BLUR_GUARD_MS = 800;
 /** @type {BrowserWindow | null} */
 let popover = null;
 /** @type {Electron.Rectangle} */
@@ -29,6 +33,9 @@ let pollTimer = null;
 let closeTimer = null;
 let isClosing = false;
 let ignoreBlurUntil = 0;
+/** @type {NodeJS.Timeout | null} */
+let openGuardTimer = null;
+let blurDuringOpenGuard = false;
 let lastStateKey = '';
 let lastBroadcastArtFp = '';
 
@@ -73,7 +80,7 @@ function broadcastState(state) {
   lastStateKey = key;
 
   setTrayIconState(state.isPlaying);
-  if (popover && !popover.isDestroyed() && popover.isVisible()) {
+  if (popover && !popover.isDestroyed()) {
     popover.webContents.send('media:update', state);
   }
 }
@@ -88,7 +95,7 @@ function broadcastArt(albumArt) {
   const fp = artFingerprint(albumArt);
   if (fp === lastBroadcastArtFp) return;
   lastBroadcastArtFp = fp;
-  if (popover && !popover.isDestroyed() && popover.isVisible()) {
+  if (popover && !popover.isDestroyed()) {
     popover.webContents.send('media:art', albumArt);
   }
 }
@@ -211,7 +218,10 @@ function createPopover() {
 
   popover.on('blur', () => {
     if (!popover?.isVisible() || isClosing) return;
-    if (Date.now() < ignoreBlurUntil) return;
+    if (Date.now() < ignoreBlurUntil) {
+      blurDuringOpenGuard = true;
+      return;
+    }
     requestClosePopover();
   });
 
@@ -257,6 +267,13 @@ function startPolling() {
   pollTimer = startSessionPolling(POLL_INTERVAL_MS, broadcastState, broadcastArt);
 }
 
+function clearOpenGuardTimer() {
+  if (openGuardTimer) {
+    clearTimeout(openGuardTimer);
+    openGuardTimer = null;
+  }
+}
+
 function clearCloseTimer() {
   if (closeTimer) {
     clearTimeout(closeTimer);
@@ -268,6 +285,7 @@ function requestClosePopover() {
   if (!popover || !popover.isVisible() || isClosing) return;
   isClosing = true;
   clearCloseTimer();
+  clearOpenGuardTimer();
   popover.webContents.send('window:request-close');
   closeTimer = setTimeout(() => finishClosePopover(), CLOSE_TIMEOUT_MS);
 }
@@ -277,7 +295,6 @@ function finishClosePopover() {
   isClosing = false;
   if (popover && !popover.isDestroyed()) {
     popover.hide();
-    destroyPopover();
   }
 }
 
@@ -286,7 +303,17 @@ function revealPopover() {
 
   isClosing = false;
   clearCloseTimer();
+  clearOpenGuardTimer();
+  blurDuringOpenGuard = false;
   ignoreBlurUntil = Date.now() + BLUR_GUARD_MS;
+  // If the window blurs during the open guard (user clicked away while we
+  // were still focusing), close once the guard expires.
+  openGuardTimer = setTimeout(() => {
+    openGuardTimer = null;
+    if (popover && !popover.isDestroyed() && popover.isVisible() && !isClosing) {
+      if (!popover.isFocused() && blurDuringOpenGuard) requestClosePopover();
+    }
+  }, BLUR_GUARD_MS);
 
   positionPopover();
   popover.setAlwaysOnTop(true, 'pop-up-menu');
@@ -307,6 +334,7 @@ function revealPopover() {
   const session = getSession();
   broadcastState(session);
   if (session.albumArt) broadcastArt(session.albumArt);
+  nudgeSessionRefresh();
 }
 
 /**
@@ -346,12 +374,15 @@ function setupIpc() {
   ipcMain.on('media:control', (_event, action) => {
     const isPlaybackToggle = action === 'shuffle' || action === 'repeat';
     const isTrackChange = action === 'next' || action === 'previous';
-    if (isPlaybackToggle || isTrackChange) {
+    // ponytail: no blur guard for track changes — the SMTC daemon commands the
+    // session directly (no foreground switch), so the popover doesn't blur on
+    // skip. Guarding here blocked outside-click close during the transition.
+    if (isPlaybackToggle) {
       extendBlurGuard(PLAYBACK_BLUR_GUARD_MS);
     }
 
     control(action, () => {
-      if (!isPlaybackToggle && !isTrackChange) return;
+      if (!isPlaybackToggle) return;
       extendBlurGuard(BLUR_GUARD_MS);
       setImmediate(() => refocusPopover());
     });
