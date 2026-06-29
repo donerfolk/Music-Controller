@@ -11,6 +11,8 @@ const { getVolumeState, setVolume, setVolumeLive, adjustVolume, setMuted, warmVo
 
 const WINDOW_WIDTH = 408;
 const WINDOW_HEIGHT = 248;
+// Room for box-shadow glow + transparent outside-click margin around the card.
+const POPOVER_INSET = 40;
 const POLL_INTERVAL_MS = 1000;
 const CLOSE_TIMEOUT_MS = 400;
 const BLUR_GUARD_MS = 600;
@@ -138,18 +140,25 @@ function positionPopover() {
   y = Math.max(workArea.y + 8, Math.min(y, workArea.y + workArea.height - WINDOW_HEIGHT - 8));
 
   cardLayout = { x, y, width: WINDOW_WIDTH, height: WINDOW_HEIGHT };
-  popover.setBounds(workArea, false);
+  popover.setBounds(
+    {
+      x: cardLayout.x - POPOVER_INSET,
+      y: cardLayout.y - POPOVER_INSET,
+      width: cardLayout.width + POPOVER_INSET * 2,
+      height: cardLayout.height + POPOVER_INSET * 2,
+    },
+    false,
+  );
   broadcastPopoverLayout();
 }
 
 function sendPopoverLayout() {
   if (!popover || popover.isDestroyed()) return;
 
-  const workArea = popover.getBounds();
   return {
     card: {
-      x: cardLayout.x - workArea.x,
-      y: cardLayout.y - workArea.y,
+      x: POPOVER_INSET,
+      y: POPOVER_INSET,
       width: cardLayout.width,
       height: cardLayout.height,
     },

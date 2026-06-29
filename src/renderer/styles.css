@@ -203,6 +203,7 @@ body {
   flex-shrink: 0;
   width: 88px;
   height: 88px;
+  border-radius: var(--art-radius);
   overflow: hidden;
 }
 
